@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { BookOpen, Calendar, HelpCircle, Globe, Settings } from 'lucide-react';
 import FlashcardApp from './components/FlashcardApp';
 import WordOfTheDay from './components/WordOfTheDay';

@@ -261,7 +261,7 @@ const CultureTrivia: React.FC = () => {
         <div className="card p-6">
           <h3 className="text-lg font-semibold mb-4">Recent Facts</h3>
           <div className="space-y-2">
-            {factHistory.slice(-5).reverse().map((fact, index) => (
+            {factHistory.slice(-5).reverse().map((fact) => (
               <div
                 key={fact.id}
                 className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${

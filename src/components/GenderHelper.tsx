@@ -16,7 +16,7 @@ const GenderHelper: React.FC = () => {
   const [selectedGender, setSelectedGender] = useState<'der' | 'die' | 'das' | null>(null);
   const [showResult, setShowResult] = useState(false);
   const [score, setScore] = useState({ correct: 0, total: 0 });
-  const [words, setWords] = useState<GermanNoun[]>([]);
+
   const [usedWords, setUsedWords] = useState<Set<string>>(new Set());
 
   const sampleWords: GermanNoun[] = [
@@ -38,7 +38,6 @@ const GenderHelper: React.FC = () => {
   ];
 
   useEffect(() => {
-    setWords(sampleWords);
     getNextWord();
   }, []);
 
@@ -73,37 +72,7 @@ const GenderHelper: React.FC = () => {
     }
   };
 
-  const getGenderTip = (word: string): string => {
-    // Basic gender rules for learning
-    const tips = {
-      'der': [
-        'Male people and animals',
-        'Days, months, seasons',
-        'Weather phenomena',
-        'Cardinal directions',
-        'Words ending in -er (often)',
-        'Words ending in -ismus, -ant, -ent'
-      ],
-      'die': [
-        'Female people and animals',
-        'Numbers as nouns',
-        'Many flowers and trees',
-        'Words ending in -ung, -heit, -keit',
-        'Words ending in -schaft, -tät, -tion',
-        'Words ending in -ie, -ur, -ik'
-      ],
-      'das': [
-        'Young people/animals (das Kind, das Baby)',
-        'Metals and chemical elements',
-        'Infinitives used as nouns',
-        'Words ending in -chen, -lein (diminutives)',
-        'Words ending in -um, -ment, -tum',
-        'Foreign words ending in -o'
-      ]
-    };
-    
-    return 'Gender pattern tips available in practice mode!';
-  };
+
 
   const getAccuracyColor = (accuracy: number) => {
     if (accuracy >= 80) return 'text-green-600';

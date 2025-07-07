@@ -181,7 +181,7 @@ const WordOfTheDay: React.FC = () => {
     const englishWords = english.split(' ');
     
     if (words.length <= 3) {
-      return words.map((word, i) => `"${word}" - part of "${englishWords.slice(0, 2).join(' ')}"`).join('\n');
+      return words.map((word, _) => `"${word}" - part of "${englishWords.slice(0, 2).join(' ')}"`).join('\n');
     }
     
     return `Key parts: "${words[0]}" (${englishWords[0]}), main concept: "${words.find(w => w.includes(todaysWord!.german.split(' ')[0]))}"`;

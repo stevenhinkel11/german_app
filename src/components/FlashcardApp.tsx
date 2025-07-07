@@ -29,19 +29,7 @@ const FlashcardApp: React.FC = () => {
   const [showImportOptions, setShowImportOptions] = useState(false);
   const [pasteText, setPasteText] = useState('');
 
-  // Sample flashcards for demo (replace with Google Sheets data)
-  const sampleFlashcards: Flashcard[] = [
-    { id: '1', german: 'das Haus', english: 'the house', category: 'nouns', difficulty: 1 },
-    { id: '2', german: 'der Hund', english: 'the dog', category: 'nouns', difficulty: 1 },
-    { id: '3', german: 'die Katze', english: 'the cat', category: 'nouns', difficulty: 1 },
-    { id: '4', german: 'laufen', english: 'to run', category: 'verbs', difficulty: 2 },
-    { id: '5', german: 'sprechen', english: 'to speak', category: 'verbs', difficulty: 2 },
-    { id: '6', german: 'schön', english: 'beautiful', category: 'adjectives', difficulty: 2 },
-    { id: '7', german: 'schnell', english: 'fast', category: 'adjectives', difficulty: 2 },
-    { id: '8', german: 'schwierig', english: 'difficult', category: 'adjectives', difficulty: 3 },
-    { id: '9', german: 'verstehen', english: 'to understand', category: 'verbs', difficulty: 3 },
-    { id: '10', german: 'der Kühlschrank', english: 'the refrigerator', category: 'nouns', difficulty: 3 },
-  ];
+
 
   useEffect(() => {
     // Load progress from localStorage

@@ -17,91 +17,83 @@ interface WordOfDay {
 const WordOfTheDay: React.FC = () => {
   const [todaysWord, setTodaysWord] = useState<WordOfDay | null>(null);
   const [showDetails, setShowDetails] = useState(false);
+  const [drillMode, setDrillMode] = useState<'translation' | 'example' | 'usage'>('translation');
   const [userAnswer, setUserAnswer] = useState('');
   const [showAnswer, setShowAnswer] = useState(false);
-  const [drillMode, setDrillMode] = useState<'translation' | 'example' | 'usage'>('translation');
 
-  // Sample words for demonstration
-  const sampleWords: WordOfDay[] = [
+  // Word of the Day database
+  const words: WordOfDay[] = [
     {
       id: '1',
       german: 'verschärfen',
-      english: 'to intensify, to tighten',
-      pronunciation: 'fɛɐ̯ˈʃɛːɐ̯fən',
+      english: 'to intensify',
+      pronunciation: 'fɛʁˈʃɛʁfən',
       type: 'verb',
-      example: 'Die Regierung will die Gesetze verschärfen.',
-      exampleTranslation: 'The government wants to tighten the laws.',
-      difficulty: 4,
-      date: '2024-01-15'
+      example: 'Die Sicherheitsmaßnahmen wurden verschärft.',
+      exampleTranslation: 'The security measures were intensified.',
+      difficulty: 3,
+      date: '2024-01-08'
     },
     {
       id: '2',
-      german: 'die Nachhaltigkeit',
+      german: 'Nachhaltigkeit',
       english: 'sustainability',
-      pronunciation: 'ˈnaːxhaltɪçkaɪ̯t',
+      pronunciation: 'ˈnaːxhaltɪçkaɪt',
       gender: 'die',
       type: 'noun',
-      example: 'Nachhaltigkeit ist wichtig für unsere Zukunft.',
-      exampleTranslation: 'Sustainability is important for our future.',
-      difficulty: 4,
-      date: '2024-01-16'
+      example: 'Nachhaltigkeit ist ein wichtiges Thema.',
+      exampleTranslation: 'Sustainability is an important topic.',
+      difficulty: 3,
+      date: '2024-01-09'
     },
     {
       id: '3',
       german: 'beeindruckend',
       english: 'impressive',
-      pronunciation: 'bəˈʔaɪ̯ndrʊkənt',
+      pronunciation: 'bəˈʔaɪndrʊkənt',
       type: 'adjective',
       example: 'Das war eine beeindruckende Leistung.',
       exampleTranslation: 'That was an impressive performance.',
-      difficulty: 3,
-      date: '2024-01-17'
+      difficulty: 2,
+      date: '2024-01-10'
     },
     {
       id: '4',
       german: 'sich bemühen',
-      english: 'to make an effort, to try hard',
+      english: 'to make an effort',
       pronunciation: 'zɪç bəˈmyːən',
       type: 'reflexive verb',
       example: 'Ich bemühe mich, pünktlich zu sein.',
-      exampleTranslation: 'I make an effort to be punctual.',
-      difficulty: 4,
-      date: '2024-01-18'
+      exampleTranslation: 'I make an effort to be on time.',
+      difficulty: 3,
+      date: '2024-01-11'
     },
     {
       id: '5',
-      german: 'die Herausforderung',
+      german: 'Herausforderung',
       english: 'challenge',
-      pronunciation: 'ˈhɛʁaʊ̯sˌfɔʁdərʊŋ',
+      pronunciation: 'hɛˈʁaʊsfɔʁdəʁʊŋ',
       gender: 'die',
       type: 'noun',
-      example: 'Diese Aufgabe ist eine große Herausforderung.',
-      exampleTranslation: 'This task is a big challenge.',
-      difficulty: 3,
-      date: '2024-01-19'
+      example: 'Das ist eine große Herausforderung.',
+      exampleTranslation: 'This is a big challenge.',
+      difficulty: 2,
+      date: '2024-01-12'
     }
   ];
 
   useEffect(() => {
-    const today = new Date().toISOString().split('T')[0];
-    
-    // Find word for today based on date
-    let wordForToday = sampleWords.find(word => word.date === today);
-    
-    // If no word for today, use a random one
-    if (!wordForToday) {
-      const dayOfYear = Math.floor((Date.now() - new Date(new Date().getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24));
-      wordForToday = sampleWords[dayOfYear % sampleWords.length];
-    }
-    
-    setTodaysWord(wordForToday);
+    // Get today's word (cycling through the list)
+    const today = new Date();
+    const dayOfYear = Math.floor((today.getTime() - new Date(today.getFullYear(), 0, 0).getTime()) / (1000 * 60 * 60 * 24));
+    const wordIndex = dayOfYear % words.length;
+    setTodaysWord(words[wordIndex]);
   }, []);
 
   const speakWord = (text: string) => {
     if ('speechSynthesis' in window) {
       const utterance = new SpeechSynthesisUtterance(text);
       utterance.lang = 'de-DE';
-      utterance.rate = 0.8;
       speechSynthesis.speak(utterance);
     }
   };
@@ -111,11 +103,12 @@ const WordOfTheDay: React.FC = () => {
   };
 
   const nextDrill = () => {
-    setUserAnswer('');
-    setShowAnswer(false);
     const modes: ('translation' | 'example' | 'usage')[] = ['translation', 'example', 'usage'];
     const currentIndex = modes.indexOf(drillMode);
-    setDrillMode(modes[(currentIndex + 1) % modes.length]);
+    const nextIndex = (currentIndex + 1) % modes.length;
+    setDrillMode(modes[nextIndex]);
+    setUserAnswer('');
+    setShowAnswer(false);
   };
 
   const getDrillQuestion = () => {
@@ -127,10 +120,128 @@ const WordOfTheDay: React.FC = () => {
       case 'example':
         return `Translate this sentence: "${todaysWord.example}"`;
       case 'usage':
-        return `Use "${todaysWord.german}" in a sentence:`;
+        return `Use "${todaysWord.german}" in a German sentence:`;
       default:
         return '';
     }
+  };
+
+  const generateDynamicTranslation = (word: WordOfDay): string => {
+    const baseTranslation = word.english;
+    const alternatives = generateTranslationAlternatives(word);
+    const contextualNote = getContextualNote(word);
+    
+    return `${baseTranslation}\n\n💡 Alternative meanings: ${alternatives}\n\n📝 Usage note: ${contextualNote}`;
+  };
+
+  const generateDynamicExampleAnswer = (word: WordOfDay): string => {
+    const baseTranslation = word.exampleTranslation;
+    const breakdown = breakdownSentence(word.example, word.exampleTranslation);
+    const similarExamples = generateSimilarExamples(word);
+    
+    return `${baseTranslation}\n\n🔍 Word breakdown:\n${breakdown}\n\n📚 Similar examples:\n${similarExamples}`;
+  };
+
+  const generateDynamicUsageAnswer = (word: WordOfDay): string => {
+    const baseExample = word.example;
+    const variations = generateUsageVariations(word);
+    const grammarTip = getGrammarTip(word);
+    
+    return `${baseExample}\n\n🔄 Variations:\n${variations}\n\n📖 Grammar tip: ${grammarTip}`;
+  };
+
+  const generateTranslationAlternatives = (word: WordOfDay): string => {
+    const alternatives: { [key: string]: string[] } = {
+      'verschärfen': ['to intensify', 'to sharpen', 'to tighten up', 'to make stricter'],
+      'Nachhaltigkeit': ['sustainability', 'durability', 'long-term viability'],
+      'beeindruckend': ['impressive', 'striking', 'remarkable', 'awe-inspiring'],
+      'sich bemühen': ['to make an effort', 'to strive', 'to endeavor', 'to try hard'],
+      'Herausforderung': ['challenge', 'test', 'difficulty', 'hurdle']
+    };
+    
+    const alts = alternatives[word.german] || [word.english, 'various contexts apply'];
+    return alts.slice(1).join(', ');
+  };
+
+  const getContextualNote = (word: WordOfDay): string => {
+    const notes: { [key: string]: string } = {
+      'verschärfen': 'Often used in formal contexts like laws, regulations, or policies',
+      'Nachhaltigkeit': 'A key concept in German environmental and business discourse',
+      'beeindruckend': 'Can describe anything from performances to achievements',
+      'sich bemühen': 'Reflexive verb - always use "sich" with the appropriate pronoun',
+      'Herausforderung': 'Can be positive (opportunity) or negative (obstacle)'
+    };
+    
+    return notes[word.german] || 'Consider the context and register when using this word';
+  };
+
+  const breakdownSentence = (german: string, english: string): string => {
+    // Simple breakdown - in a real app, you might use a more sophisticated parser
+    const words = german.split(' ');
+    const englishWords = english.split(' ');
+    
+    if (words.length <= 3) {
+      return words.map((word, i) => `"${word}" - part of "${englishWords.slice(0, 2).join(' ')}"`).join('\n');
+    }
+    
+    return `Key parts: "${words[0]}" (${englishWords[0]}), main concept: "${words.find(w => w.includes(todaysWord!.german.split(' ')[0]))}"`;
+  };
+
+  const generateSimilarExamples = (word: WordOfDay): string => {
+    const examples: { [key: string]: string[] } = {
+      'verschärfen': [
+        'Die Sicherheit wurde verschärft. - Security was tightened.',
+        'Wir müssen die Kontrollen verschärfen. - We need to intensify the controls.'
+      ],
+      'Nachhaltigkeit': [
+        'Nachhaltigkeit ist unser Ziel. - Sustainability is our goal.',
+        'Die Nachhaltigkeit des Projekts ist wichtig. - The sustainability of the project is important.'
+      ],
+      'beeindruckend': [
+        'Das Ergebnis war beeindruckend. - The result was impressive.',
+        'Sie hat eine beeindruckende Leistung gezeigt. - She showed an impressive performance.'
+      ]
+    };
+    
+    const similar = examples[word.german] || [
+      `Das ist sehr ${word.german}. - That is very ${word.english}.`,
+      `Ein ${word.german} Beispiel. - A ${word.english} example.`
+    ];
+    
+    return similar.join('\n');
+  };
+
+  const generateUsageVariations = (word: WordOfDay): string => {
+    const variations: { [key: string]: string[] } = {
+      'verschärfen': [
+        'verschärft (past participle) - "Die verschärften Regeln"',
+        'Verschärfung (noun) - "Die Verschärfung der Lage"'
+      ],
+      'sich bemühen': [
+        'ich bemühe mich - I make an effort',
+        'er/sie bemüht sich - he/she makes an effort',
+        'wir bemühen uns - we make an effort'
+      ],
+      'Herausforderung': [
+        'eine große Herausforderung - a big challenge',
+        'Herausforderungen annehmen - to accept challenges'
+      ]
+    };
+    
+    return variations[word.german]?.join('\n') || 'Try using this word in different sentence positions';
+  };
+
+  const getGrammarTip = (word: WordOfDay): string => {
+    if (word.type === 'verb') {
+      return 'Remember German verb conjugations change based on the subject';
+    }
+    if (word.type === 'noun' && word.gender) {
+      return `This is a ${word.gender} noun - use appropriate articles and adjective endings`;
+    }
+    if (word.type === 'reflexive verb') {
+      return 'Reflexive verbs always need the reflexive pronoun (mich, dich, sich, etc.)';
+    }
+    return 'Pay attention to word order in German sentences';
   };
 
   const getDrillAnswer = () => {
@@ -138,11 +249,11 @@ const WordOfTheDay: React.FC = () => {
     
     switch (drillMode) {
       case 'translation':
-        return todaysWord.english;
+        return generateDynamicTranslation(todaysWord);
       case 'example':
-        return todaysWord.exampleTranslation;
+        return generateDynamicExampleAnswer(todaysWord);
       case 'usage':
-        return todaysWord.example;
+        return generateDynamicUsageAnswer(todaysWord);
       default:
         return '';
     }
@@ -258,7 +369,7 @@ const WordOfTheDay: React.FC = () => {
           {showAnswer && (
             <div className="bg-green-50 border border-green-200 rounded-lg p-4">
               <h4 className="font-semibold text-green-800 mb-2">Correct Answer:</h4>
-              <p className="text-green-700">{getDrillAnswer()}</p>
+              <p className="text-green-700 whitespace-pre-line">{getDrillAnswer()}</p>
             </div>
           )}
         </div>

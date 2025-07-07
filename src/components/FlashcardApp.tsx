@@ -23,9 +23,11 @@ const FlashcardApp: React.FC = () => {
   const [dailySet, setDailySet] = useState<Flashcard[]>([]);
   const [cardsPerDay, setCardsPerDay] = useState(20);
   const [isLoading, setIsLoading] = useState(false);
-  const [googleSheetUrl, setGoogleSheetUrl] = useState('');
+  const [googleSheetUrl, setGoogleSheetUrl] = useState('https://docs.google.com/spreadsheets/d/e/2PACX-1vRa3k9eFOlMbkJEE4SZqhFvaqtbAzR3-ecP8tBrvXJINQmr4XfWYkzZkBGvbMINOpjCi7JqU75NRNrA/pubhtml');
   const [progress, setProgress] = useState<Map<string, FlashcardProgress>>(new Map());
   const [studyDirection, setStudyDirection] = useState<'german-to-english' | 'english-to-german'>('german-to-english');
+  const [showImportOptions, setShowImportOptions] = useState(false);
+  const [pasteText, setPasteText] = useState('');
 
   // Sample flashcards for demo (replace with Google Sheets data)
   const sampleFlashcards: Flashcard[] = [
@@ -68,16 +70,15 @@ const FlashcardApp: React.FC = () => {
       setStudyDirection(savedDirection);
     }
 
-    // Try to load saved flashcards first, otherwise use sample data
+    // Try to load saved flashcards first, otherwise auto-load your deck
     const savedFlashcards = localStorage.getItem('saved-flashcards');
     if (savedFlashcards) {
       const cards = JSON.parse(savedFlashcards);
       setFlashcards(cards);
       generateDailySet(cards);
     } else {
-      // Initialize with sample data
-      setFlashcards(sampleFlashcards);
-      generateDailySet(sampleFlashcards);
+      // Auto-load your Google Sheets deck on first visit
+      loadFromGoogleSheets();
     }
   }, []);
 
@@ -99,6 +100,69 @@ const FlashcardApp: React.FC = () => {
       localStorage.setItem(`daily-set-${today}`, JSON.stringify(daily));
       console.log('New daily set created:', daily.map(c => c.german).slice(0, 5));
     }
+  };
+
+  const importFromCSV = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      try {
+        const text = e.target?.result as string;
+        const cards = parseCSVText(text);
+        setFlashcards(cards);
+        generateDailySet(cards);
+        localStorage.setItem('saved-flashcards', JSON.stringify(cards));
+        alert(`Successfully imported ${cards.length} words from CSV!`);
+        setShowImportOptions(false);
+      } catch (error) {
+        alert('Error importing CSV. Please check the file format.');
+      }
+    };
+    reader.readAsText(file);
+  };
+
+  const importFromPaste = () => {
+    if (!pasteText.trim()) return;
+    
+    try {
+      const cards = parseCSVText(pasteText);
+      setFlashcards(cards);
+      generateDailySet(cards);
+      localStorage.setItem('saved-flashcards', JSON.stringify(cards));
+      alert(`Successfully imported ${cards.length} words from text!`);
+      setPasteText('');
+      setShowImportOptions(false);
+    } catch (error) {
+      alert('Error importing text. Please check the format.');
+    }
+  };
+
+  const parseCSVText = (text: string): Flashcard[] => {
+    const lines = text.split('\n').filter(line => line.trim().length > 0);
+    const cards: Flashcard[] = [];
+    
+    for (let i = 0; i < lines.length; i++) {
+      const values = lines[i].split(',').map(val => val.replace(/^"|"$/g, '').trim());
+      
+      if (values.length >= 2 && values[0] && values[1]) {
+        // Skip header row if it contains "German" or "English"
+        if (i === 0 && (values[0].toLowerCase().includes('german') || values[1].toLowerCase().includes('english'))) {
+          continue;
+        }
+        
+        cards.push({
+          id: (i + 1).toString(),
+          german: values[0].trim(),
+          english: values[1].trim(),
+          category: values[2]?.trim() || 'vocabulary',
+          difficulty: parseInt(values[3]) || 2
+        });
+      }
+    }
+    
+    return cards;
   };
 
   const loadFromGoogleSheets = async () => {
@@ -258,13 +322,19 @@ const FlashcardApp: React.FC = () => {
             </select>
           </div>
         </div>
-        <div className="mt-4 flex gap-2">
+        <div className="mt-4 flex gap-2 flex-wrap">
           <button
             onClick={loadFromGoogleSheets}
             disabled={isLoading || !googleSheetUrl}
             className="btn-primary disabled:opacity-50"
           >
-            {isLoading ? 'Loading...' : 'Load from Google Sheets'}
+            {isLoading ? 'Loading...' : 'Reload Your Deck'}
+          </button>
+          <button
+            onClick={() => setShowImportOptions(!showImportOptions)}
+            className="btn-secondary"
+          >
+            📥 Import New List
           </button>
           <button
             onClick={() => {
@@ -281,6 +351,75 @@ const FlashcardApp: React.FC = () => {
             New Daily Set
           </button>
         </div>
+
+        {/* Import Options */}
+        {showImportOptions && (
+          <div className="mt-6 p-4 border border-gray-200 rounded-lg bg-gray-50">
+            <h3 className="font-semibold mb-4">Import New Vocabulary List</h3>
+            
+            <div className="space-y-4">
+              {/* Google Sheets */}
+              <div>
+                <label className="block text-sm font-medium mb-2">🔗 From Google Sheets</label>
+                <div className="flex gap-2">
+                  <input
+                    type="url"
+                    value={googleSheetUrl}
+                    onChange={(e) => setGoogleSheetUrl(e.target.value)}
+                    placeholder="Paste Google Sheets URL here..."
+                    className="flex-1 px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  <button
+                    onClick={loadFromGoogleSheets}
+                    disabled={isLoading || !googleSheetUrl}
+                    className="btn-primary disabled:opacity-50"
+                  >
+                    Load
+                  </button>
+                </div>
+              </div>
+
+              {/* CSV Upload */}
+              <div>
+                <label className="block text-sm font-medium mb-2">📄 Upload CSV File</label>
+                <input
+                  type="file"
+                  accept=".csv"
+                  onChange={importFromCSV}
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
+                />
+                <p className="text-xs text-gray-500 mt-1">Format: German, English, Category, Difficulty</p>
+              </div>
+
+              {/* Copy/Paste */}
+              <div>
+                <label className="block text-sm font-medium mb-2">📋 Copy & Paste Text</label>
+                <textarea
+                  value={pasteText}
+                  onChange={(e) => setPasteText(e.target.value)}
+                  placeholder="Paste your vocabulary list here (one per line or CSV format):&#10;Erwarten, Expect&#10;Unbedingt, Absolutely&#10;..."
+                  className="w-full px-3 py-2 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+                  rows={4}
+                />
+                <div className="flex gap-2 mt-2">
+                  <button
+                    onClick={importFromPaste}
+                    disabled={!pasteText.trim()}
+                    className="btn-primary disabled:opacity-50"
+                  >
+                    Import Text
+                  </button>
+                  <button
+                    onClick={() => setShowImportOptions(false)}
+                    className="btn-secondary"
+                  >
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Progress Bar */}

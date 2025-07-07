@@ -42,12 +42,15 @@ const GenderHelper: React.FC = () => {
   }, []);
 
   const getNextWord = () => {
-    const availableWords = sampleWords.filter(word => !usedWords.has(word.id));
+    // Always shuffle the word list to ensure fresh randomization
+    const shuffledWords = [...sampleWords].sort(() => Math.random() - 0.5);
+    const availableWords = shuffledWords.filter(word => !usedWords.has(word.id));
     
     if (availableWords.length === 0) {
-      // Reset if all words have been used
+      // Reset if all words have been used and shuffle again
       setUsedWords(new Set());
-      setCurrentWord(sampleWords[Math.floor(Math.random() * sampleWords.length)]);
+      const newShuffle = [...sampleWords].sort(() => Math.random() - 0.5);
+      setCurrentWord(newShuffle[0]);
     } else {
       const randomWord = availableWords[Math.floor(Math.random() * availableWords.length)];
       setCurrentWord(randomWord);

@@ -128,8 +128,10 @@ const CultureTrivia: React.FC = () => {
       ? triviaFacts 
       : triviaFacts.filter(fact => fact.country === selectedCountry);
     
-    const unusedFacts = filteredFacts.filter(fact => !factHistory.some(used => used.id === fact.id));
-    const factsToChooseFrom = unusedFacts.length > 0 ? unusedFacts : filteredFacts;
+    // Shuffle the filtered facts to ensure fresh randomization
+    const shuffledFacts = [...filteredFacts].sort(() => Math.random() - 0.5);
+    const unusedFacts = shuffledFacts.filter(fact => !factHistory.some(used => used.id === fact.id));
+    const factsToChooseFrom = unusedFacts.length > 0 ? unusedFacts : shuffledFacts;
     
     const randomFact = factsToChooseFrom[Math.floor(Math.random() * factsToChooseFrom.length)];
     setCurrentFact(randomFact);

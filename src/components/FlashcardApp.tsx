@@ -83,7 +83,28 @@ const FlashcardApp: React.FC = () => {
       // Generate new daily set
       console.log(`Creating new daily set with ${cardsPerDay} cards`);
       const shuffled = [...cards].sort(() => Math.random() - 0.5);
-      const daily = shuffled.slice(0, cardsPerDay);
+      let daily = shuffled.slice(0, cardsPerDay);
+      
+      // Add cards that were previously marked as "repeat" or "not-quite" to the daily set
+      const savedProgress = localStorage.getItem('flashcard-progress');
+      if (savedProgress) {
+        const progressData = JSON.parse(savedProgress);
+        console.log('Progress data loaded:', progressData);
+        const repeatCards = cards.filter(card => 
+          progressData[card.id] && (progressData[card.id].status === 'repeat' || progressData[card.id].status === 'not-quite')
+        );
+        console.log(`Found ${repeatCards.length} repeat/not-quite cards in progress data`);
+        
+        if (repeatCards.length > 0) {
+          console.log(`Adding ${repeatCards.length} previously marked repeat/not-quite cards:`, repeatCards.map(c => c.german));
+                      // Add repeat/not-quite cards to the end of the daily set, avoiding duplicates
+          const dailyIds = new Set(daily.map(c => c.id));
+          const newRepeatCards = repeatCards.filter(card => !dailyIds.has(card.id));
+          console.log(`After filtering duplicates: ${newRepeatCards.length} cards to add`);
+          daily = [...daily, ...newRepeatCards];
+        }
+      }
+      
       setDailySet(daily);
       localStorage.setItem(`daily-set-${today}`, JSON.stringify(daily));
       console.log('New daily set created:', daily.map(c => c.german).slice(0, 5));
@@ -247,12 +268,30 @@ const FlashcardApp: React.FC = () => {
     const progressObj = Object.fromEntries(newProgressMap);
     localStorage.setItem('flashcard-progress', JSON.stringify(progressObj));
 
+    // If card is marked as repeat, add it back to the end of the daily set
+    let currentDailySet = dailySet;
+    if (status === 'repeat') {
+      const updatedDailySet = [...dailySet];
+      updatedDailySet.push(currentCard);
+      console.log(`Adding repeat card "${currentCard.german}" to end of daily set. New length: ${updatedDailySet.length}`);
+      setDailySet(updatedDailySet);
+      currentDailySet = updatedDailySet;
+      
+      // Update the saved daily set as well
+      const today = new Date().toDateString();
+      localStorage.setItem(`daily-set-${today}`, JSON.stringify(updatedDailySet));
+    }
+
     // Move to next card
-    if (currentIndex < dailySet.length - 1) {
-      setCurrentIndex(currentIndex + 1);
+    console.log(`Current index: ${currentIndex}, Daily set length: ${currentDailySet.length}`);
+    if (currentIndex < currentDailySet.length - 1) {
+      const nextIndex = currentIndex + 1;
+      console.log(`Moving to next card at index ${nextIndex}`);
+      setCurrentIndex(nextIndex);
       setShowAnswer(false);
     } else {
       // End of session
+      console.log('End of session reached');
       alert('Great job! You\'ve completed today\'s flashcard session!');
     }
   };

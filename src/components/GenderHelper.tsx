@@ -1,41 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { HelpCircle, Check, X, RotateCcw } from 'lucide-react';
-
-interface GermanNoun {
-  id: string;
-  word: string;
-  gender: 'der' | 'die' | 'das';
-  plural: string;
-  english: string;
-  category: string;
-  difficulty: number;
-}
+import { HelpCircle, Check, X, RotateCcw, Plus, BookOpen } from 'lucide-react';
+import { germanNouns, GermanNoun } from '../data/germanNouns';
 
 const GenderHelper: React.FC = () => {
   const [currentWord, setCurrentWord] = useState<GermanNoun | null>(null);
   const [selectedGender, setSelectedGender] = useState<'der' | 'die' | 'das' | null>(null);
   const [showResult, setShowResult] = useState(false);
   const [score, setScore] = useState({ correct: 0, total: 0 });
-
   const [usedWords, setUsedWords] = useState<Set<string>>(new Set());
-
-  const sampleWords: GermanNoun[] = [
-    { id: '1', word: 'Haus', gender: 'das', plural: 'Häuser', english: 'house', category: 'buildings', difficulty: 1 },
-    { id: '2', word: 'Katze', gender: 'die', plural: 'Katzen', english: 'cat', category: 'animals', difficulty: 1 },
-    { id: '3', word: 'Hund', gender: 'der', plural: 'Hunde', english: 'dog', category: 'animals', difficulty: 1 },
-    { id: '4', word: 'Auto', gender: 'das', plural: 'Autos', english: 'car', category: 'vehicles', difficulty: 1 },
-    { id: '5', word: 'Tisch', gender: 'der', plural: 'Tische', english: 'table', category: 'furniture', difficulty: 1 },
-    { id: '6', word: 'Wand', gender: 'die', plural: 'Wände', english: 'wall', category: 'buildings', difficulty: 2 },
-    { id: '7', word: 'Fenster', gender: 'das', plural: 'Fenster', english: 'window', category: 'buildings', difficulty: 2 },
-    { id: '8', word: 'Freundschaft', gender: 'die', plural: 'Freundschaften', english: 'friendship', category: 'abstract', difficulty: 3 },
-    { id: '9', word: 'Verständnis', gender: 'das', plural: 'Verständnisse', english: 'understanding', category: 'abstract', difficulty: 3 },
-    { id: '10', word: 'Bügermeister', gender: 'der', plural: 'Bügermeister', english: 'mayor', category: 'people', difficulty: 3 },
-    { id: '11', word: 'Universität', gender: 'die', plural: 'Universitäten', english: 'university', category: 'education', difficulty: 2 },
-    { id: '12', word: 'Mädchen', gender: 'das', plural: 'Mädchen', english: 'girl', category: 'people', difficulty: 2 },
-    { id: '13', word: 'Frau', gender: 'die', plural: 'Frauen', english: 'woman', category: 'people', difficulty: 1 },
-    { id: '14', word: 'Mann', gender: 'der', plural: 'Männer', english: 'man', category: 'people', difficulty: 1 },
-    { id: '15', word: 'Buch', gender: 'das', plural: 'Bücher', english: 'book', category: 'objects', difficulty: 1 },
-  ];
+  const [showAddSuccess, setShowAddSuccess] = useState(false);
 
   useEffect(() => {
     getNextWord();
@@ -43,13 +16,13 @@ const GenderHelper: React.FC = () => {
 
   const getNextWord = () => {
     // Always shuffle the word list to ensure fresh randomization
-    const shuffledWords = [...sampleWords].sort(() => Math.random() - 0.5);
+    const shuffledWords = [...germanNouns].sort(() => Math.random() - 0.5);
     const availableWords = shuffledWords.filter(word => !usedWords.has(word.id));
     
     if (availableWords.length === 0) {
       // Reset if all words have been used and shuffle again
       setUsedWords(new Set());
-      const newShuffle = [...sampleWords].sort(() => Math.random() - 0.5);
+      const newShuffle = [...germanNouns].sort(() => Math.random() - 0.5);
       setCurrentWord(newShuffle[0]);
     } else {
       const randomWord = availableWords[Math.floor(Math.random() * availableWords.length)];
@@ -75,6 +48,43 @@ const GenderHelper: React.FC = () => {
     }
   };
 
+  const addToFlashcards = () => {
+    if (!currentWord) return;
+    
+    // Get existing flashcards from localStorage
+    const savedFlashcards = localStorage.getItem('saved-flashcards');
+    const existingCards = savedFlashcards ? JSON.parse(savedFlashcards) : [];
+    
+    // Check if word already exists in flashcards
+    const wordExists = existingCards.some((card: any) => 
+      card.german.toLowerCase() === currentWord.word.toLowerCase()
+    );
+    
+    if (wordExists) {
+      alert('This word is already in your flashcard deck!');
+      return;
+    }
+    
+    // Create new flashcard entry
+    const newFlashcard = {
+      id: `gender-${currentWord.id}`,
+      german: `${currentWord.gender} ${currentWord.word}`,
+      english: currentWord.english,
+      category: currentWord.category,
+      difficulty: currentWord.difficulty
+    };
+    
+    // Add to existing flashcards
+    const updatedFlashcards = [...existingCards, newFlashcard];
+    localStorage.setItem('saved-flashcards', JSON.stringify(updatedFlashcards));
+    
+    // Show success message
+    setShowAddSuccess(true);
+    setTimeout(() => setShowAddSuccess(false), 2000);
+    
+    console.log(`Added "${currentWord.gender} ${currentWord.word}" to flashcards!`);
+  };
+
 
 
   const getAccuracyColor = (accuracy: number) => {
@@ -87,6 +97,27 @@ const GenderHelper: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Header Info */}
+      <div className="card p-4 bg-purple-50 border-purple-200">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="bg-purple-100 p-2 rounded-full">
+              <BookOpen size={20} className="text-purple-600" />
+            </div>
+            <div>
+              <h3 className="font-semibold text-purple-800">Gender Practice Database</h3>
+              <p className="text-sm text-purple-600">
+                {germanNouns.length} most common German nouns • Click "Add to Flashcards" to save words you want to study
+              </p>
+            </div>
+          </div>
+          <div className="text-right">
+            <div className="text-sm text-purple-600">Total Words</div>
+            <div className="text-2xl font-bold text-purple-800">{germanNouns.length}</div>
+          </div>
+        </div>
+      </div>
+
       {/* Statistics */}
       <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="card p-4 text-center">
@@ -170,13 +201,32 @@ const GenderHelper: React.FC = () => {
                 Plural: <span className="font-medium">{currentWord.plural}</span>
               </div>
               
-              <button
-                onClick={getNextWord}
-                className="btn-primary flex items-center gap-2 mx-auto"
-              >
-                <RotateCcw size={16} />
-                Next Word
-              </button>
+              <div className="flex justify-center gap-3 mb-4">
+                <button
+                  onClick={getNextWord}
+                  className="btn-primary flex items-center gap-2"
+                >
+                  <RotateCcw size={16} />
+                  Next Word
+                </button>
+                
+                <button
+                  onClick={addToFlashcards}
+                  className="btn-secondary flex items-center gap-2 text-green-600 border-green-600 hover:bg-green-50"
+                >
+                  <Plus size={16} />
+                  Add to Flashcards
+                </button>
+              </div>
+              
+              {showAddSuccess && (
+                <div className="bg-green-100 border border-green-400 text-green-700 px-4 py-3 rounded text-center">
+                  <div className="flex items-center justify-center gap-2">
+                    <Check size={16} />
+                    Added to your flashcard deck!
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>

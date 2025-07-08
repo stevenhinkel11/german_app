@@ -263,7 +263,6 @@ const WordOfTheDay: React.FC = () => {
       
       try {
         // Try to load additional words from Google Sheets (your vocabulary list)
-        const googleSheetUrl = 'https://docs.google.com/spreadsheets/d/e/2PACX-1vRa3k9eFOlMbkJEE4SZqhFvaqtbAzR3-ecP8tBrvXJINQmr4XfWYkzZkBGvbMINOpjCi7JqU75NRNrA/pubhtml';
         const csvUrl = `https://docs.google.com/spreadsheets/d/e/2PACX-1vRa3k9eFOlMbkJEE4SZqhFvaqtbAzR3-ecP8tBrvXJINQmr4XfWYkzZkBGvbMINOpjCi7JqU75NRNrA/pub?output=csv`;
         
         const response = await fetch(csvUrl);

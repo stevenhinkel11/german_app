@@ -24,47 +24,84 @@ const WordOfTheDay: React.FC = () => {
   const [isLoadingWords, setIsLoadingWords] = useState(false);
   const [isGeneratingAnswer, setIsGeneratingAnswer] = useState(false);
   const [aiAnswer, setAiAnswer] = useState('');
+  const [aiStatus, setAiStatus] = useState<'idle' | 'loading' | 'success' | 'fallback'>('idle');
 
   // Hugging Face API integration
   const generateAIResponse = async (prompt: string): Promise<string> => {
     try {
       setIsGeneratingAnswer(true);
+      setAiStatus('loading');
       
-      const response = await fetch(
-        'https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium',
-        {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            inputs: prompt,
-            parameters: {
-              max_length: 200,
-              temperature: 0.7,
-              do_sample: true,
-              top_p: 0.9,
-            },
-          }),
+      // Try multiple models in order of preference
+      const models = [
+        'google/flan-t5-large',
+        'microsoft/DialoGPT-medium',
+        'gpt2'
+      ];
+      
+      for (const model of models) {
+        try {
+          const response = await fetch(
+            `https://api-inference.huggingface.co/models/${model}`,
+            {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/json',
+              },
+              body: JSON.stringify({
+                inputs: prompt,
+                parameters: {
+                  max_length: 300,
+                  temperature: 0.7,
+                  do_sample: true,
+                  top_p: 0.9,
+                  repetition_penalty: 1.1,
+                },
+              }),
+            }
+          );
+
+          if (!response.ok) {
+            if (response.status === 503) {
+              console.log(`Model ${model} is loading, trying next...`);
+              continue;
+            }
+            throw new Error(`API Error: ${response.status}`);
+          }
+
+          const data = await response.json();
+          console.log('AI Response:', data);
+          
+          // Handle different response formats
+          if (Array.isArray(data) && data[0]?.generated_text) {
+            const generated = data[0].generated_text;
+            const cleanedResponse = generated.replace(prompt, '').trim();
+            if (cleanedResponse.length > 10) {
+              setAiStatus('success');
+              return cleanedResponse;
+            }
+          } else if (data.generated_text) {
+            const generated = data.generated_text;
+            const cleanedResponse = generated.replace(prompt, '').trim();
+            if (cleanedResponse.length > 10) {
+              setAiStatus('success');
+              return cleanedResponse;
+            }
+          } else if (Array.isArray(data) && data[0]?.summary_text) {
+            // For some models that return summary_text
+            setAiStatus('success');
+            return data[0].summary_text;
+          }
+        } catch (modelError) {
+          console.log(`Model ${model} failed:`, modelError);
+          continue;
         }
-      );
-
-      if (!response.ok) {
-        throw new Error(`API Error: ${response.status}`);
       }
-
-      const data = await response.json();
       
-      // Handle different response formats
-      if (Array.isArray(data) && data[0]?.generated_text) {
-        return data[0].generated_text.replace(prompt, '').trim();
-      } else if (data.generated_text) {
-        return data.generated_text.replace(prompt, '').trim();
-      } else {
-        throw new Error('Unexpected response format');
-      }
+      throw new Error('All models failed');
     } catch (error) {
       console.error('Hugging Face API Error:', error);
+      setAiStatus('fallback');
       // Fallback to enhanced static content
       return generateFallbackResponse(prompt);
     } finally {
@@ -73,32 +110,32 @@ const WordOfTheDay: React.FC = () => {
   };
 
   const generateFallbackResponse = (prompt: string): string => {
+    if (!todaysWord) return 'No word selected for analysis.';
+    
     // Enhanced fallback responses when API is unavailable
-    if (prompt.includes('translation')) {
-      return 'Translation explanation with context and usage notes (offline mode)';
-    } else if (prompt.includes('example')) {
-      return 'Example sentence breakdown with grammar analysis (offline mode)';
-    } else if (prompt.includes('usage')) {
-      return 'Usage examples with variations and tips (offline mode)';
+    if (prompt.includes('translation') || prompt.includes('Explain the German word')) {
+      return `"${todaysWord.german}" means "${todaysWord.english}". This is a ${todaysWord.type}${todaysWord.gender ? ` (${todaysWord.gender})` : ''}. In German, this word is commonly used in ${todaysWord.type === 'verb' ? 'various sentence contexts and requires proper conjugation' : 'different grammatical cases'}. ${todaysWord.type === 'noun' && todaysWord.gender ? `As a ${todaysWord.gender} noun, use the appropriate article and case endings.` : ''} Practice using this word in your own sentences to improve retention.`;
+    } else if (prompt.includes('example') || prompt.includes('Analyze this German sentence')) {
+      return `The sentence "${todaysWord.example}" translates to "${todaysWord.exampleTranslation}". Key grammar points: ${todaysWord.german} is the main ${todaysWord.type} here. ${todaysWord.type === 'verb' ? 'Notice the verb position in the sentence - German follows specific word order rules.' : ''} ${todaysWord.gender ? `The gender ${todaysWord.gender} affects article usage.` : ''} Try creating similar sentences using this pattern.`;
+    } else if (prompt.includes('usage') || prompt.includes('Show how to use')) {
+      return `"${todaysWord.german}" can be used in multiple contexts: 1) ${todaysWord.example} 2) Try variations like changing the subject or tense. ${todaysWord.type === 'verb' ? 'Remember to conjugate based on the subject (ich, du, er/sie/es, wir, ihr, sie).' : ''} ${todaysWord.type === 'noun' ? 'Use appropriate articles and case endings based on sentence role.' : ''} Practice makes perfect!`;
     }
-    return 'Detailed explanation (offline mode)';
+    return `"${todaysWord.german}" (${todaysWord.english}) is a ${todaysWord.type}. Practice using it in context: ${todaysWord.example}`;
   };
 
   const createPromptForDrill = (word: WordOfDay, mode: string): string => {
-    const baseContext = `You are a German language tutor. The student is learning the German word "${word.german}" which means "${word.english}". It's a ${word.type}${word.gender ? ` (${word.gender})` : ''}. Example: "${word.example}" = "${word.exampleTranslation}".`;
-    
     switch (mode) {
       case 'translation':
-        return `${baseContext}\n\nProvide a detailed explanation of the word "${word.german}" including:\n1. Main meaning and alternative translations\n2. Etymology or word composition if relevant\n3. Usage contexts and register (formal/informal)\n4. Common collocations or phrases\n5. Memory tip or mnemonic device\n\nKeep it educational and under 150 words.`;
+        return `Explain the German word "${word.german}" (${word.english}). Include alternative meanings, usage context, and a memory tip. Keep it concise and educational.`;
       
       case 'example':
-        return `${baseContext}\n\nAnalyze the example sentence "${word.example}" by:\n1. Breaking down the sentence structure\n2. Explaining grammar patterns used\n3. Highlighting word order rules\n4. Noting any idiomatic expressions\n5. Providing 2-3 similar example sentences\n\nMake it clear and educational, under 150 words.`;
+        return `Analyze this German sentence: "${word.example}" (${word.exampleTranslation}). Break down the grammar, word order, and provide similar examples.`;
       
       case 'usage':
-        return `${baseContext}\n\nHelp the student use "${word.german}" correctly by:\n1. Showing different sentence positions\n2. Explaining conjugation/declension patterns\n3. Providing usage in different contexts\n4. Common mistakes to avoid\n5. Regional variations if any\n\nInclude practical examples, under 150 words.`;
+        return `Show how to use "${word.german}" in different contexts. Include conjugation patterns, common phrases, and usage tips for German learners.`;
       
       default:
-        return `${baseContext}\n\nProvide helpful information about this German word.`;
+        return `Explain the German word "${word.german}" meaning "${word.english}" for a language learner.`;
     }
   };
 
@@ -431,6 +468,7 @@ const WordOfTheDay: React.FC = () => {
     setShowAnswer(false);
     setShowDetails(false);
     setAiAnswer('');
+    setAiStatus('idle');
   };
 
   const speakWord = (text: string) => {
@@ -460,6 +498,7 @@ const WordOfTheDay: React.FC = () => {
     setUserAnswer('');
     setShowAnswer(false);
     setAiAnswer('');
+    setAiStatus('idle');
   };
 
   const getDrillQuestion = () => {
@@ -621,7 +660,11 @@ const WordOfTheDay: React.FC = () => {
             <div className="bg-green-50 border border-green-200 rounded-lg p-4">
               <h4 className="font-semibold text-green-800 mb-2 flex items-center gap-2">
                 <Brain size={16} />
-                AI-Generated Answer:
+                {aiStatus === 'success' ? 'AI-Generated Answer:' : 
+                 aiStatus === 'fallback' ? 'Enhanced Answer (Offline Mode):' : 
+                 'AI-Generated Answer:'}
+                {aiStatus === 'success' && <span className="text-xs bg-green-200 text-green-800 px-2 py-1 rounded-full">🤖 Live AI</span>}
+                {aiStatus === 'fallback' && <span className="text-xs bg-yellow-200 text-yellow-800 px-2 py-1 rounded-full">📚 Enhanced</span>}
               </h4>
               {isGeneratingAnswer ? (
                 <div className="flex items-center gap-2 text-green-700">

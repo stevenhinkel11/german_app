@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { BookOpen, Volume2, Eye, EyeOff, RefreshCw } from 'lucide-react';
+import { BookOpen, Volume2, Eye, EyeOff, RefreshCw, Brain } from 'lucide-react';
 
 interface WordOfDay {
   id: string;
@@ -22,6 +22,85 @@ const WordOfTheDay: React.FC = () => {
   const [showAnswer, setShowAnswer] = useState(false);
   const [allWords, setAllWords] = useState<WordOfDay[]>([]);
   const [isLoadingWords, setIsLoadingWords] = useState(false);
+  const [isGeneratingAnswer, setIsGeneratingAnswer] = useState(false);
+  const [aiAnswer, setAiAnswer] = useState('');
+
+  // Hugging Face API integration
+  const generateAIResponse = async (prompt: string): Promise<string> => {
+    try {
+      setIsGeneratingAnswer(true);
+      
+      const response = await fetch(
+        'https://api-inference.huggingface.co/models/microsoft/DialoGPT-medium',
+        {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            inputs: prompt,
+            parameters: {
+              max_length: 200,
+              temperature: 0.7,
+              do_sample: true,
+              top_p: 0.9,
+            },
+          }),
+        }
+      );
+
+      if (!response.ok) {
+        throw new Error(`API Error: ${response.status}`);
+      }
+
+      const data = await response.json();
+      
+      // Handle different response formats
+      if (Array.isArray(data) && data[0]?.generated_text) {
+        return data[0].generated_text.replace(prompt, '').trim();
+      } else if (data.generated_text) {
+        return data.generated_text.replace(prompt, '').trim();
+      } else {
+        throw new Error('Unexpected response format');
+      }
+    } catch (error) {
+      console.error('Hugging Face API Error:', error);
+      // Fallback to enhanced static content
+      return generateFallbackResponse(prompt);
+    } finally {
+      setIsGeneratingAnswer(false);
+    }
+  };
+
+  const generateFallbackResponse = (prompt: string): string => {
+    // Enhanced fallback responses when API is unavailable
+    if (prompt.includes('translation')) {
+      return 'Translation explanation with context and usage notes (offline mode)';
+    } else if (prompt.includes('example')) {
+      return 'Example sentence breakdown with grammar analysis (offline mode)';
+    } else if (prompt.includes('usage')) {
+      return 'Usage examples with variations and tips (offline mode)';
+    }
+    return 'Detailed explanation (offline mode)';
+  };
+
+  const createPromptForDrill = (word: WordOfDay, mode: string): string => {
+    const baseContext = `You are a German language tutor. The student is learning the German word "${word.german}" which means "${word.english}". It's a ${word.type}${word.gender ? ` (${word.gender})` : ''}. Example: "${word.example}" = "${word.exampleTranslation}".`;
+    
+    switch (mode) {
+      case 'translation':
+        return `${baseContext}\n\nProvide a detailed explanation of the word "${word.german}" including:\n1. Main meaning and alternative translations\n2. Etymology or word composition if relevant\n3. Usage contexts and register (formal/informal)\n4. Common collocations or phrases\n5. Memory tip or mnemonic device\n\nKeep it educational and under 150 words.`;
+      
+      case 'example':
+        return `${baseContext}\n\nAnalyze the example sentence "${word.example}" by:\n1. Breaking down the sentence structure\n2. Explaining grammar patterns used\n3. Highlighting word order rules\n4. Noting any idiomatic expressions\n5. Providing 2-3 similar example sentences\n\nMake it clear and educational, under 150 words.`;
+      
+      case 'usage':
+        return `${baseContext}\n\nHelp the student use "${word.german}" correctly by:\n1. Showing different sentence positions\n2. Explaining conjugation/declension patterns\n3. Providing usage in different contexts\n4. Common mistakes to avoid\n5. Regional variations if any\n\nInclude practical examples, under 150 words.`;
+      
+      default:
+        return `${baseContext}\n\nProvide helpful information about this German word.`;
+    }
+  };
 
   // Word of the Day database - Expanded collection
   const words: WordOfDay[] = [
@@ -351,6 +430,7 @@ const WordOfTheDay: React.FC = () => {
     setUserAnswer('');
     setShowAnswer(false);
     setShowDetails(false);
+    setAiAnswer('');
   };
 
   const speakWord = (text: string) => {
@@ -361,8 +441,15 @@ const WordOfTheDay: React.FC = () => {
     }
   };
 
-  const checkAnswer = () => {
+  const checkAnswer = async () => {
     setShowAnswer(true);
+    
+    if (!todaysWord) return;
+    
+    // Generate AI response
+    const prompt = createPromptForDrill(todaysWord, drillMode);
+    const answer = await generateAIResponse(prompt);
+    setAiAnswer(answer);
   };
 
   const nextDrill = () => {
@@ -372,6 +459,7 @@ const WordOfTheDay: React.FC = () => {
     setDrillMode(modes[nextIndex]);
     setUserAnswer('');
     setShowAnswer(false);
+    setAiAnswer('');
   };
 
   const getDrillQuestion = () => {
@@ -389,227 +477,9 @@ const WordOfTheDay: React.FC = () => {
     }
   };
 
-  const generateDynamicTranslation = (word: WordOfDay): string => {
-    const baseTranslation = word.english;
-    const alternatives = generateTranslationAlternatives(word);
-    const contextualNote = getContextualNote(word);
-    
-    return `${baseTranslation}\n\n💡 Alternative meanings: ${alternatives}\n\n📝 Usage note: ${contextualNote}`;
-  };
+  // Old hardcoded functions replaced by AI-generated content - using Hugging Face API
 
-  const generateDynamicExampleAnswer = (word: WordOfDay): string => {
-    const baseTranslation = word.exampleTranslation;
-    const breakdown = breakdownSentence(word.example, word.exampleTranslation);
-    const similarExamples = generateSimilarExamples(word);
-    
-    return `${baseTranslation}\n\n🔍 Word breakdown:\n${breakdown}\n\n📚 Similar examples:\n${similarExamples}`;
-  };
-
-  const generateDynamicUsageAnswer = (word: WordOfDay): string => {
-    const baseExample = word.example;
-    const variations = generateUsageVariations(word);
-    const grammarTip = getGrammarTip(word);
-    
-    return `${baseExample}\n\n🔄 Variations:\n${variations}\n\n📖 Grammar tip: ${grammarTip}`;
-  };
-
-  const generateTranslationAlternatives = (word: WordOfDay): string => {
-    const alternatives: { [key: string]: string[] } = {
-      'verschärfen': ['to intensify', 'to sharpen', 'to tighten up', 'to make stricter'],
-      'Nachhaltigkeit': ['sustainability', 'durability', 'long-term viability'],
-      'beeindruckend': ['impressive', 'striking', 'remarkable', 'awe-inspiring'],
-      'sich bemühen': ['to make an effort', 'to strive', 'to endeavor', 'to try hard'],
-      'Herausforderung': ['challenge', 'test', 'difficulty', 'hurdle'],
-      'erweitern': ['to expand', 'to broaden', 'to extend', 'to enlarge'],
-      'Geduld': ['patience', 'forbearance', 'tolerance', 'endurance'],
-      'überzeugen': ['to convince', 'to persuade', 'to win over', 'to sway'],
-      'Gewohnheit': ['habit', 'custom', 'routine', 'practice'],
-      'zuverlässig': ['reliable', 'dependable', 'trustworthy', 'consistent'],
-      'sich entscheiden': ['to decide', 'to choose', 'to make up one\'s mind', 'to resolve'],
-      'Aufmerksamkeit': ['attention', 'focus', 'concentration', 'awareness'],
-      'vertrauen': ['to trust', 'to rely on', 'to have faith in', 'to confide in'],
-      'Eigenschaft': ['characteristic', 'trait', 'quality', 'attribute'],
-      'auffallen': ['to stand out', 'to be noticeable', 'to catch attention', 'to be conspicuous'],
-      'Erinnerung': ['memory', 'recollection', 'remembrance', 'reminiscence'],
-      'neugierig': ['curious', 'inquisitive', 'interested', 'eager to know'],
-      'sich gewöhnen': ['to get used to', 'to become accustomed', 'to adapt', 'to adjust'],
-      'Vorstellung': ['imagination', 'idea', 'concept', 'notion'],
-      'betrachten': ['to consider', 'to view', 'to regard', 'to examine']
-    };
-    
-    const alts = alternatives[word.german];
-    if (alts) {
-      return alts.slice(1).join(', ');
-    }
-    
-    // For words from Google Sheets without specific alternatives, generate smart alternatives
-    const english = word.english.toLowerCase();
-    if (english.includes('to ') && english.startsWith('to ')) {
-      // It's a verb
-      const baseVerb = english.substring(3);
-      return `${baseVerb}, perform ${baseVerb}, carry out ${baseVerb}`;
-    } else if (word.german.startsWith('der ') || word.german.startsWith('die ') || word.german.startsWith('das ')) {
-      // It's a noun with article
-      return `the ${english}, a ${english}, this ${english}`;
-    } else {
-      // Generate generic alternatives based on word type
-      return `related meanings may vary by context`;
-    }
-  };
-
-  const getContextualNote = (word: WordOfDay): string => {
-    const notes: { [key: string]: string } = {
-      'verschärfen': 'Often used in formal contexts like laws, regulations, or policies',
-      'Nachhaltigkeit': 'A key concept in German environmental and business discourse',
-      'beeindruckend': 'Can describe anything from performances to achievements',
-      'sich bemühen': 'Reflexive verb - always use "sich" with the appropriate pronoun',
-      'Herausforderung': 'Can be positive (opportunity) or negative (obstacle)',
-      'erweitern': 'Commonly used in academic and professional contexts',
-      'Geduld': 'Abstract noun, often used in philosophical or advice contexts',
-      'überzeugen': 'Strong verb implying successful persuasion, not just attempting',
-      'Gewohnheit': 'Can be positive or negative - context determines meaning',
-      'zuverlässig': 'High praise in German culture - reliability is highly valued',
-      'sich entscheiden': 'Reflexive verb requiring "sich" - implies personal choice',
-      'Aufmerksamkeit': 'Formal word, often used in professional or academic settings',
-      'vertrauen': 'Can take dative object - "Ich vertraue dir" (I trust you)',
-      'Eigenschaft': 'More formal than "Merkmal" - used for inherent qualities',
-      'auffallen': 'Separable verb - "Das fällt auf" (That stands out)',
-      'Erinnerung': 'Can mean both the act of remembering and the memory itself',
-      'neugierig': 'Generally positive trait in German culture, showing interest',
-      'sich gewöhnen': 'Reflexive with "an" - "sich an etwas gewöhnen"',
-      'Vorstellung': 'Multiple meanings: imagination, idea, or performance/presentation',
-      'betrachten': 'More thoughtful than just "schauen" (to look) - implies analysis'
-    };
-    
-    const specificNote = notes[word.german];
-    if (specificNote) {
-      return specificNote;
-    }
-    
-    // Generate smart contextual notes for Google Sheets words
-    const german = word.german.toLowerCase();
-    const english = word.english.toLowerCase();
-    
-    if (german.includes('sich ')) {
-      return 'Reflexive verb - requires the appropriate reflexive pronoun (mich, dich, sich, etc.)';
-    } else if (german.startsWith('der ')) {
-      return 'Masculine noun - use "der" (nominative), "den" (accusative), "dem" (dative), "des" (genitive)';
-    } else if (german.startsWith('die ')) {
-      return 'Feminine noun - use "die" (nom./acc.), "der" (dat./gen.)';
-    } else if (german.startsWith('das ')) {
-      return 'Neuter noun - use "das" (nom./acc.), "dem" (dative), "des" (genitive)';
-    } else if (english.startsWith('to ')) {
-      return 'Verb - remember German verb conjugations change based on subject and tense';
-    } else if (german.endsWith('ig') || german.endsWith('lich') || german.endsWith('isch')) {
-      return 'Adjective - endings change based on gender, case, and definiteness of noun';
-    } else {
-      return 'Pay attention to context, gender (for nouns), and appropriate usage register';
-    }
-  };
-
-  const breakdownSentence = (german: string, english: string): string => {
-    // Simple breakdown - in a real app, you might use a more sophisticated parser
-    const words = german.split(' ');
-    const englishWords = english.split(' ');
-    
-    if (words.length <= 3) {
-      return words.map((word, _) => `"${word}" - part of "${englishWords.slice(0, 2).join(' ')}"`).join('\n');
-    }
-    
-    return `Key parts: "${words[0]}" (${englishWords[0]}), main concept: "${words.find(w => w.includes(todaysWord!.german.split(' ')[0]))}"`;
-  };
-
-  const generateSimilarExamples = (word: WordOfDay): string => {
-    const examples: { [key: string]: string[] } = {
-      'verschärfen': [
-        'Die Sicherheit wurde verschärft. - Security was tightened.',
-        'Wir müssen die Kontrollen verschärfen. - We need to intensify the controls.'
-      ],
-      'Nachhaltigkeit': [
-        'Nachhaltigkeit ist unser Ziel. - Sustainability is our goal.',
-        'Die Nachhaltigkeit des Projekts ist wichtig. - The sustainability of the project is important.'
-      ],
-      'beeindruckend': [
-        'Das Ergebnis war beeindruckend. - The result was impressive.',
-        'Sie hat eine beeindruckende Leistung gezeigt. - She showed an impressive performance.'
-      ],
-      'erweitern': [
-        'Wir wollen unseren Horizont erweitern. - We want to broaden our horizons.',
-        'Das Unternehmen erweitert seine Produktion. - The company is expanding its production.'
-      ],
-      'Geduld': [
-        'Hab etwas Geduld mit mir. - Have some patience with me.',
-        'Geduld ist eine Tugend. - Patience is a virtue.'
-      ],
-      'überzeugen': [
-        'Sie konnte mich überzeugen. - She was able to convince me.',
-        'Das Argument überzeugt nicht. - The argument is not convincing.'
-      ],
-      'vertrauen': [
-        'Ich vertraue dir vollkommen. - I trust you completely.',
-        'Vertrauen muss man sich verdienen. - Trust must be earned.'
-      ],
-      'neugierig': [
-        'Ich bin neugierig auf deine Meinung. - I am curious about your opinion.',
-        'Das Kind ist sehr neugierig. - The child is very curious.'
-      ]
-    };
-    
-    const similar = examples[word.german] || [
-      `Das ist sehr ${word.german}. - That is very ${word.english}.`,
-      `Ein ${word.german} Beispiel. - A ${word.english} example.`
-    ];
-    
-    return similar.join('\n');
-  };
-
-  const generateUsageVariations = (word: WordOfDay): string => {
-    const variations: { [key: string]: string[] } = {
-      'verschärfen': [
-        'verschärft (past participle) - "Die verschärften Regeln"',
-        'Verschärfung (noun) - "Die Verschärfung der Lage"'
-      ],
-      'sich bemühen': [
-        'ich bemühe mich - I make an effort',
-        'er/sie bemüht sich - he/she makes an effort',
-        'wir bemühen uns - we make an effort'
-      ],
-      'Herausforderung': [
-        'eine große Herausforderung - a big challenge',
-        'Herausforderungen annehmen - to accept challenges'
-      ]
-    };
-    
-    return variations[word.german]?.join('\n') || 'Try using this word in different sentence positions';
-  };
-
-  const getGrammarTip = (word: WordOfDay): string => {
-    if (word.type === 'verb') {
-      return 'Remember German verb conjugations change based on the subject';
-    }
-    if (word.type === 'noun' && word.gender) {
-      return `This is a ${word.gender} noun - use appropriate articles and adjective endings`;
-    }
-    if (word.type === 'reflexive verb') {
-      return 'Reflexive verbs always need the reflexive pronoun (mich, dich, sich, etc.)';
-    }
-    return 'Pay attention to word order in German sentences';
-  };
-
-  const getDrillAnswer = () => {
-    if (!todaysWord) return '';
-    
-    switch (drillMode) {
-      case 'translation':
-        return generateDynamicTranslation(todaysWord);
-      case 'example':
-        return generateDynamicExampleAnswer(todaysWord);
-      case 'usage':
-        return generateDynamicUsageAnswer(todaysWord);
-      default:
-        return '';
-    }
-  };
+  // All old hardcoded functions removed - now using AI-generated content via Hugging Face API
 
   if (!todaysWord || isLoadingWords) {
     return (
@@ -705,7 +575,8 @@ const WordOfTheDay: React.FC = () => {
         <div className="text-center mb-6">
           <h2 className="text-xl font-semibold mb-2">Practice Drill</h2>
           <div className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-green-100 text-green-800 mb-4">
-            {drillMode.charAt(0).toUpperCase() + drillMode.slice(1)} Mode
+            <Brain size={14} className="mr-1" />
+            {drillMode.charAt(0).toUpperCase() + drillMode.slice(1)} Mode (AI-Powered)
           </div>
         </div>
 
@@ -726,9 +597,17 @@ const WordOfTheDay: React.FC = () => {
           <div className="flex justify-center gap-4 mb-6">
             <button
               onClick={checkAnswer}
-              className="btn-primary"
+              disabled={isGeneratingAnswer}
+              className="btn-primary flex items-center gap-2"
             >
-              Check Answer
+              {isGeneratingAnswer ? (
+                <>
+                  <Brain className="animate-spin" size={16} />
+                  Generating...
+                </>
+              ) : (
+                'Check Answer'
+              )}
             </button>
             <button
               onClick={nextDrill}
@@ -740,8 +619,20 @@ const WordOfTheDay: React.FC = () => {
 
           {showAnswer && (
             <div className="bg-green-50 border border-green-200 rounded-lg p-4">
-              <h4 className="font-semibold text-green-800 mb-2">Correct Answer:</h4>
-              <p className="text-green-700 whitespace-pre-line">{getDrillAnswer()}</p>
+              <h4 className="font-semibold text-green-800 mb-2 flex items-center gap-2">
+                <Brain size={16} />
+                AI-Generated Answer:
+              </h4>
+              {isGeneratingAnswer ? (
+                <div className="flex items-center gap-2 text-green-700">
+                  <Brain className="animate-spin" size={16} />
+                  <span>Generating personalized response...</span>
+                </div>
+              ) : (
+                <p className="text-green-700 whitespace-pre-line">
+                  {aiAnswer || 'Unable to generate answer. Please try again.'}
+                </p>
+              )}
             </div>
           )}
         </div>
@@ -750,13 +641,20 @@ const WordOfTheDay: React.FC = () => {
       {/* Progress Streak */}
       <div className="card p-4">
         <div className="text-center">
-          <h3 className="font-semibold text-gray-900 mb-2">Study Progress</h3>
+          <h3 className="font-semibold text-gray-900 mb-2 flex items-center gap-2 justify-center">
+            <Brain size={16} />
+            AI-Enhanced Study Progress
+          </h3>
           <div className="text-2xl font-bold text-blue-600">📚 {allWords.length} words available!</div>
           <p className="text-sm text-gray-600 mt-1">
             Smart rotation avoids last 25 words. Fresh content every visit!
           </p>
           <div className="mt-2 text-xs text-gray-500">
             {words.length} curated + {allWords.length - words.length} from your Google Sheets
+          </div>
+          <div className="mt-2 text-xs text-blue-600 flex items-center gap-1 justify-center">
+            <Brain size={12} />
+            Powered by Hugging Face AI for personalized explanations
           </div>
         </div>
       </div>

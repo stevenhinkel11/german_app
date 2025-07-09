@@ -143,63 +143,57 @@ const WordOfTheDay: React.FC = () => {
   const renderDrillInput = () => {
     if (!currentDrill) return null;
 
-    switch (currentDrill.type) {
-      case 'hidden-translation':
-      case 'grammar-usage':
-      case 'word-formation':
-        if (currentDrill.options) {
-          return (
-            <div className="space-y-2">
-              {currentDrill.options.map((option, index) => (
-                <label key={index} className="flex items-center space-x-2 cursor-pointer">
-                  <input
-                    type="radio"
-                    name="drill-option"
-                    value={option}
-                    checked={selectedOption === option}
-                    onChange={(e) => setSelectedOption(e.target.value)}
-                    disabled={answerSubmitted}
-                    className="text-blue-600"
-                  />
-                  <span className={`${answerSubmitted && option === currentDrill.correctAnswer 
-                    ? 'text-green-600 font-semibold' 
-                    : answerSubmitted && option === selectedOption && isCorrect === false
-                    ? 'text-red-600'
-                    : ''}`}>
-                    {option}
-                  </span>
-                </label>
-              ))}
-            </div>
-          );
-        }
-        // Fall through to text input if no options
-        
-      case 'new-context':
-      case 'pronunciation-guess':
-      case 'scenario-usage':
-        return (
-          <textarea
-            value={userAnswer}
-            onChange={(e) => setUserAnswer(e.target.value)}
-            disabled={answerSubmitted}
-            placeholder={currentDrill.type === 'pronunciation-guess' 
-              ? "What German word matches this pronunciation?"
-              : "Type your answer here..."}
-            className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
-            rows={currentDrill.type === 'pronunciation-guess' ? 1 : 3}
-            onKeyPress={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey && !answerSubmitted) {
-                e.preventDefault();
-                checkAnswer();
-              }
-            }}
-          />
-        );
-      
-      default:
-        return <div className="text-gray-500">Drill type not implemented</div>;
+    // Handle options-based drills
+    if (currentDrill.options && ['hidden-translation', 'grammar-usage', 'word-formation'].includes(currentDrill.type)) {
+      return (
+        <div className="space-y-2">
+          {currentDrill.options.map((option, index) => (
+            <label key={index} className="flex items-center space-x-2 cursor-pointer">
+              <input
+                type="radio"
+                name="drill-option"
+                value={option}
+                checked={selectedOption === option}
+                onChange={(e) => setSelectedOption(e.target.value)}
+                disabled={answerSubmitted}
+                className="text-blue-600"
+              />
+              <span className={`${answerSubmitted && option === currentDrill.correctAnswer 
+                ? 'text-green-600 font-semibold' 
+                : answerSubmitted && option === selectedOption && isCorrect === false
+                ? 'text-red-600'
+                : ''}`}>
+                {option}
+              </span>
+            </label>
+          ))}
+        </div>
+      );
     }
+    
+    // Handle text input drills
+    if (['new-context', 'pronunciation-guess', 'scenario-usage', 'hidden-translation', 'grammar-usage', 'word-formation'].includes(currentDrill.type)) {
+      return (
+        <textarea
+          value={userAnswer}
+          onChange={(e) => setUserAnswer(e.target.value)}
+          disabled={answerSubmitted}
+          placeholder={currentDrill.type === 'pronunciation-guess' 
+            ? "What German word matches this pronunciation?"
+            : "Type your answer here..."}
+          className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+          rows={currentDrill.type === 'pronunciation-guess' ? 1 : 3}
+          onKeyPress={(e) => {
+            if (e.key === 'Enter' && !e.shiftKey && !answerSubmitted) {
+              e.preventDefault();
+              checkAnswer();
+            }
+          }}
+        />
+      );
+    }
+    
+    return <div className="text-gray-500">Drill type not implemented</div>;
   };
 
   // Determine if we should hide the definition based on current drill

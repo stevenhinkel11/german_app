@@ -91,7 +91,7 @@ const WordOfTheDay: React.FC = () => {
     let answer = '';
     let userInput = '';
     
-    if (currentDrill.type === 'multiple-choice') {
+    if (currentDrill.type === 'hidden-translation' && currentDrill.options) {
       answer = currentDrill.correctAnswer;
       userInput = selectedOption;
     } else {
@@ -99,9 +99,21 @@ const WordOfTheDay: React.FC = () => {
       userInput = userAnswer.toLowerCase().trim();
     }
     
-    const correct = currentDrill.type === 'multiple-choice' 
-      ? userInput === answer
-      : userInput.includes(answer) || answer.includes(userInput);
+    // More flexible answer checking for different drill types
+    let correct = false;
+    
+    if (currentDrill.type === 'hidden-translation') {
+      correct = userInput === answer;
+    } else if (currentDrill.type === 'pronunciation-guess') {
+      correct = userInput === todaysWord?.german.toLowerCase();
+    } else if (currentDrill.type === 'grammar-usage') {
+      correct = userInput === answer;
+    } else if (currentDrill.type === 'word-formation') {
+      correct = userInput === answer;
+    } else {
+      // For open-ended questions, accept if answer contains key elements
+      correct = userInput.includes(answer) || answer.includes(userInput) || userInput.length > 5;
+    }
     
     setIsCorrect(correct);
     setAnswerSubmitted(true);
@@ -118,13 +130,13 @@ const WordOfTheDay: React.FC = () => {
 
   const getDrillTitle = (type: string) => {
     switch (type) {
-      case 'fill-blank': return '📝 Fill in the Blank';
-      case 'multiple-choice': return '🔤 Multiple Choice';
-      case 'context-clue': return '🧩 Context Clues';
-      case 'word-family': return '👨‍👩‍👧‍👦 Word Family';
-      case 'sentence-builder': return '🏗️ Sentence Builder';
-      case 'pronunciation': return '🗣️ Pronunciation';
-      default: return '📚 Drill';
+      case 'hidden-translation': return '🔤 Translation Challenge';
+      case 'new-context': return '🎯 New Context Usage';
+      case 'grammar-usage': return '📚 Grammar Practice';
+      case 'pronunciation-guess': return '🗣️ Pronunciation Challenge';
+      case 'scenario-usage': return '🎭 Real-World Scenario';
+      case 'word-formation': return '🔗 Word Family';
+      default: return '📖 Drill';
     }
   };
 
@@ -132,45 +144,56 @@ const WordOfTheDay: React.FC = () => {
     if (!currentDrill) return null;
 
     switch (currentDrill.type) {
-      case 'multiple-choice':
+      case 'hidden-translation':
+      case 'grammar-usage':
+      case 'word-formation':
+        if (currentDrill.options) {
+          return (
+            <div className="space-y-2">
+              {currentDrill.options.map((option, index) => (
+                <label key={index} className="flex items-center space-x-2 cursor-pointer">
+                  <input
+                    type="radio"
+                    name="drill-option"
+                    value={option}
+                    checked={selectedOption === option}
+                    onChange={(e) => setSelectedOption(e.target.value)}
+                    disabled={answerSubmitted}
+                    className="text-blue-600"
+                  />
+                  <span className={`${answerSubmitted && option === currentDrill.correctAnswer 
+                    ? 'text-green-600 font-semibold' 
+                    : answerSubmitted && option === selectedOption && isCorrect === false
+                    ? 'text-red-600'
+                    : ''}`}>
+                    {option}
+                  </span>
+                </label>
+              ))}
+            </div>
+          );
+        }
+        // Fall through to text input if no options
+        
+      case 'new-context':
+      case 'pronunciation-guess':
+      case 'scenario-usage':
         return (
-          <div className="space-y-2">
-            {currentDrill.options?.map((option, index) => (
-              <label key={index} className="flex items-center space-x-2 cursor-pointer">
-                <input
-                  type="radio"
-                  name="drill-option"
-                  value={option}
-                  checked={selectedOption === option}
-                  onChange={(e) => setSelectedOption(e.target.value)}
-                  disabled={answerSubmitted}
-                  className="text-blue-600"
-                />
-                <span className={`${answerSubmitted && option === currentDrill.correctAnswer 
-                  ? 'text-green-600 font-semibold' 
-                  : answerSubmitted && option === selectedOption && isCorrect === false
-                  ? 'text-red-600'
-                  : ''}`}>
-                  {option}
-                </span>
-              </label>
-            ))}
-          </div>
-        );
-      
-      case 'fill-blank':
-      case 'context-clue':
-      case 'sentence-builder':
-      case 'pronunciation':
-        return (
-          <input
-            type="text"
+          <textarea
             value={userAnswer}
             onChange={(e) => setUserAnswer(e.target.value)}
             disabled={answerSubmitted}
-            placeholder="Type your answer..."
-            className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500"
-            onKeyPress={(e) => e.key === 'Enter' && !answerSubmitted && checkAnswer()}
+            placeholder={currentDrill.type === 'pronunciation-guess' 
+              ? "What German word matches this pronunciation?"
+              : "Type your answer here..."}
+            className="w-full p-3 border border-gray-300 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-500 resize-none"
+            rows={currentDrill.type === 'pronunciation-guess' ? 1 : 3}
+            onKeyPress={(e) => {
+              if (e.key === 'Enter' && !e.shiftKey && !answerSubmitted) {
+                e.preventDefault();
+                checkAnswer();
+              }
+            }}
           />
         );
       
@@ -178,6 +201,9 @@ const WordOfTheDay: React.FC = () => {
         return <div className="text-gray-500">Drill type not implemented</div>;
     }
   };
+
+  // Determine if we should hide the definition based on current drill
+  const shouldHideDefinition = currentDrill?.hideDefinition && !showAnswer;
 
   if (!todaysWord || !currentDrill) {
     return (
@@ -197,7 +223,7 @@ const WordOfTheDay: React.FC = () => {
         <div className="flex justify-between items-start mb-4">
           <div>
             <h2 className="text-2xl font-bold text-gray-900 mb-2">📚 Word of the Day</h2>
-            <p className="text-gray-600">Master German vocabulary with interactive drills</p>
+            <p className="text-gray-600">Master German vocabulary with challenging drills</p>
           </div>
           <div className="flex items-center gap-2">
             <div className="text-sm text-gray-500">
@@ -220,7 +246,18 @@ const WordOfTheDay: React.FC = () => {
               <h3 className="text-3xl font-bold text-blue-900 mb-2">
                 {todaysWord.gender && `${todaysWord.gender} `}{todaysWord.german}
               </h3>
-              <p className="text-lg text-blue-700">{todaysWord.english}</p>
+              
+              {/* Conditionally hide the definition during certain drills */}
+              {!shouldHideDefinition && (
+                <p className="text-lg text-blue-700">{todaysWord.english}</p>
+              )}
+              
+              {shouldHideDefinition && (
+                <p className="text-lg text-blue-700 italic">
+                  ❓ Definition hidden for this drill
+                </p>
+              )}
+              
               <p className="text-sm text-blue-600 mt-1">[{todaysWord.pronunciation}]</p>
             </div>
             <button
@@ -274,6 +311,13 @@ const WordOfTheDay: React.FC = () => {
                 <div>
                   <h4 className="font-semibold text-gray-800 mb-2">👨‍👩‍👧‍👦 Word Family:</h4>
                   <p className="text-gray-700">{todaysWord.wordFamily.join(', ')}</p>
+                </div>
+              )}
+
+              {todaysWord.usageContexts && (
+                <div>
+                  <h4 className="font-semibold text-gray-800 mb-2">🎯 Usage Contexts:</h4>
+                  <p className="text-gray-700">{todaysWord.usageContexts.join(', ')}</p>
                 </div>
               )}
             </div>

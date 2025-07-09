@@ -32,7 +32,7 @@ export const generateDrillsForWord = (word: EnhancedWord): WordDrill[] => {
   const drills: WordDrill[] = [];
 
   // Fill-in-the-blank drill
-  word.examples.forEach((example, index) => {
+  word.examples.forEach((example) => {
     const words = example.sentence.split(' ');
     const wordIndex = words.findIndex(w => w.toLowerCase().includes(word.german.toLowerCase()));
     if (wordIndex !== -1) {

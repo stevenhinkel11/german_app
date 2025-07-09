@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { HelpCircle, Check, X, RotateCcw, Plus, BookOpen } from 'lucide-react';
+import { HelpCircle, Check, X, RotateCcw, Plus, BookOpen, Target, Settings } from 'lucide-react';
 import { germanNouns, GermanNoun } from '../data/germanNouns';
 
 const GenderHelper: React.FC = () => {
@@ -11,6 +11,12 @@ const GenderHelper: React.FC = () => {
   const [showAddSuccess, setShowAddSuccess] = useState(false);
   const [progress, setProgress] = useState<Map<string, any>>(new Map());
   const [randomizedPool, setRandomizedPool] = useState<GermanNoun[]>([]);
+  
+  // Session management
+  const [sessionLength, setSessionLength] = useState(10);
+  const [sessionCounter, setSessionCounter] = useState(0);
+  const [sessionComplete, setSessionComplete] = useState(false);
+  const [showSessionSettings, setShowSessionSettings] = useState(false);
 
   useEffect(() => {
     // Load progress from localStorage
@@ -25,6 +31,12 @@ const GenderHelper: React.FC = () => {
         });
       });
       setProgress(progressMap);
+    }
+
+    // Load session length preference
+    const savedSessionLength = localStorage.getItem('gender-session-length');
+    if (savedSessionLength) {
+      setSessionLength(parseInt(savedSessionLength));
     }
 
     // Create a heavily randomized pool
@@ -56,28 +68,51 @@ const GenderHelper: React.FC = () => {
   };
 
   const getNextWord = () => {
+    if (sessionComplete) return;
+    
     if (randomizedPool.length === 0) {
       createRandomizedPool();
       return;
     }
 
-    // Use different strategies for word selection to maximize randomness
+    // Priority 1: Words marked as "repeat" or "not-quite" from previous sessions
+    const priorityWords = randomizedPool.filter(word => {
+      const wordProgress = progress.get(word.id);
+      return wordProgress && (wordProgress.status === 'repeat' || wordProgress.status === 'not-quite') && !usedWords.has(word.id);
+    });
+
+    // Priority 2: Words never seen before
+    const newWords = randomizedPool.filter(word => !progress.has(word.id) && !usedWords.has(word.id));
+
+    // Priority 3: All other available words
+    const otherWords = randomizedPool.filter(word => !usedWords.has(word.id));
+
     let availableWords: GermanNoun[];
     
-    // If we've used less than 30% of words, pick from entire randomized pool
-    if (usedWords.size < germanNouns.length * 0.3) {
-      availableWords = randomizedPool.filter(word => !usedWords.has(word.id));
+    // Select from priority words first, then new words, then others
+    if (priorityWords.length > 0) {
+      availableWords = priorityWords;
+      console.log(`🎯 Prioritizing ${priorityWords.length} words marked for review`);
+    } else if (newWords.length > 0) {
+      availableWords = newWords;
+      console.log(`📚 Selecting from ${newWords.length} new words`);
     } else {
-      // Reset used words periodically for better variety
-      setUsedWords(new Set());
-      availableWords = randomizedPool;
+      availableWords = otherWords;
+      console.log(`🔄 Selecting from ${otherWords.length} other words`);
     }
     
+    // If we've used most words, reset the session
     if (availableWords.length === 0) {
-      // Fallback: create new randomized pool
-      createRandomizedPool();
-      setUsedWords(new Set());
-      availableWords = randomizedPool;
+      if (usedWords.size < germanNouns.length * 0.3) {
+        // Fallback: create new randomized pool
+        createRandomizedPool();
+        setUsedWords(new Set());
+        availableWords = randomizedPool;
+      } else {
+        // Reset used words periodically for better variety
+        setUsedWords(new Set());
+        availableWords = randomizedPool;
+      }
     }
     
     // Advanced randomization: use timestamp + multiple random factors
@@ -105,6 +140,15 @@ const GenderHelper: React.FC = () => {
       }));
       
       setUsedWords(prev => new Set(prev).add(currentWord.id));
+      
+      // Update session counter
+      const newSessionCounter = sessionCounter + 1;
+      setSessionCounter(newSessionCounter);
+      
+      // Check if session is complete
+      if (newSessionCounter >= sessionLength) {
+        setSessionComplete(true);
+      }
     }
   };
 
@@ -128,10 +172,40 @@ const GenderHelper: React.FC = () => {
 
     console.log(`Marked "${currentWord.word}" as: ${status}`);
     
+    // Handle "repeat" - add word back to current session
+    if (status === 'repeat') {
+      // Remove from used words so it can appear again in this session
+      setUsedWords(prev => {
+        const newUsedWords = new Set(prev);
+        newUsedWords.delete(currentWord.id);
+        return newUsedWords;
+      });
+      
+      // Decrease session counter since we're repeating this word
+      setSessionCounter(prev => Math.max(0, prev - 1));
+      
+      console.log(`🔄 Added "${currentWord.word}" back to current session for repeat practice`);
+    }
+    
     // Move to next word after a brief delay
     setTimeout(() => {
       getNextWord();
     }, 500);
+  };
+
+  const startNewSession = () => {
+    setSessionCounter(0);
+    setSessionComplete(false);
+    setScore({ correct: 0, total: 0 });
+    setUsedWords(new Set());
+    createRandomizedPool();
+    getNextWord();
+  };
+
+  const updateSessionLength = (newLength: number) => {
+    setSessionLength(newLength);
+    localStorage.setItem('gender-session-length', newLength.toString());
+    setShowSessionSettings(false);
   };
 
   const addToFlashcards = () => {
@@ -171,8 +245,6 @@ const GenderHelper: React.FC = () => {
     console.log(`Added "${currentWord.gender} ${currentWord.word}" to flashcards!`);
   };
 
-
-
   const getAccuracyColor = (accuracy: number) => {
     if (accuracy >= 80) return 'text-green-600';
     if (accuracy >= 60) return 'text-yellow-600';
@@ -193,7 +265,7 @@ const GenderHelper: React.FC = () => {
             <div>
               <h3 className="font-semibold text-purple-800">Gender Practice Database</h3>
               <p className="text-sm text-purple-600">
-                {germanNouns.length} most common German nouns • Advanced randomization • Progress tracking
+                {germanNouns.length} most common German nouns • Smart word prioritization • Progress tracking
               </p>
               <button
                 onClick={() => {
@@ -202,13 +274,97 @@ const GenderHelper: React.FC = () => {
                 }}
                 className="text-xs text-purple-600 hover:text-purple-800 underline mt-1"
               >
-                🔄 Refresh word pool for maximum variety
+                🔄 Refresh word pool and reset priorities
               </button>
             </div>
           </div>
-          <div className="text-right">
-            <div className="text-sm text-purple-600">Total Words</div>
-            <div className="text-2xl font-bold text-purple-800">{germanNouns.length}</div>
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <div className="text-sm text-purple-600">Session Length</div>
+              <div className="text-xl font-bold text-purple-800 flex items-center gap-2">
+                {sessionLength} words
+                <button
+                  onClick={() => setShowSessionSettings(!showSessionSettings)}
+                  className="p-1 text-purple-600 hover:text-purple-800 transition-colors"
+                  title="Change session length"
+                >
+                  <Settings size={16} />
+                </button>
+              </div>
+            </div>
+            <div className="text-right">
+              <div className="text-sm text-purple-600">Total Words</div>
+              <div className="text-2xl font-bold text-purple-800">{germanNouns.length}</div>
+            </div>
+          </div>
+        </div>
+        
+        {/* Session Settings Dropdown */}
+        {showSessionSettings && (
+          <div className="mt-4 p-4 bg-white rounded-lg border border-purple-200">
+            <h4 className="font-semibold text-purple-800 mb-3">Choose Session Length</h4>
+            <div className="grid grid-cols-3 gap-2">
+              {[10, 20, 50].map(length => (
+                <button
+                  key={length}
+                  onClick={() => updateSessionLength(length)}
+                  className={`p-2 rounded text-sm font-medium transition-colors ${
+                    sessionLength === length 
+                      ? 'bg-purple-600 text-white' 
+                      : 'bg-purple-100 text-purple-800 hover:bg-purple-200'
+                  }`}
+                >
+                  {length} words
+                </button>
+              ))}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Session Progress */}
+      <div className="card p-4 bg-blue-50 border-blue-200">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center gap-3">
+            <div className="bg-blue-100 p-2 rounded-full">
+              <Target size={20} className="text-blue-600" />
+            </div>
+            <div>
+                             <h3 className="font-semibold text-blue-800">Current Session</h3>
+               <p className="text-sm text-blue-600">
+                 {sessionComplete 
+                   ? `Session complete! You practiced ${sessionLength} words.`
+                   : `Progress: ${sessionCounter}/${sessionLength} words • Smart prioritization active`
+                 }
+               </p>
+            </div>
+          </div>
+          <div className="flex items-center gap-4">
+            <div className="text-right">
+              <div className="text-sm text-blue-600">Progress</div>
+              <div className="text-2xl font-bold text-blue-800">
+                {Math.round((sessionCounter / sessionLength) * 100)}%
+              </div>
+            </div>
+            {sessionComplete && (
+              <button
+                onClick={startNewSession}
+                className="btn-primary flex items-center gap-2"
+              >
+                <Target size={16} />
+                New Session
+              </button>
+            )}
+          </div>
+        </div>
+        
+        {/* Progress Bar */}
+        <div className="mt-3">
+          <div className="w-full bg-blue-200 rounded-full h-2">
+            <div 
+              className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+              style={{ width: `${(sessionCounter / sessionLength) * 100}%` }}
+            />
           </div>
         </div>
       </div>
@@ -231,12 +387,45 @@ const GenderHelper: React.FC = () => {
         </div>
       </div>
 
+      {/* Session Complete Message */}
+      {sessionComplete && (
+        <div className="card p-6 text-center bg-green-50 border-green-200">
+          <div className="text-3xl font-bold text-green-800 mb-4">
+            🎉 Session Complete!
+          </div>
+                     <div className="text-lg text-green-700 mb-4">
+             You practiced {sessionLength} words and got {score.correct} correct ({accuracy}% accuracy)
+           </div>
+           <div className="text-sm text-green-600 mb-4">
+             💡 Your next session will prioritize words you marked as "Not quite" or "Repeat" for focused practice
+           </div>
+          <div className="space-y-4">
+            <div className="flex justify-center gap-4">
+              <button
+                onClick={startNewSession}
+                className="btn-primary flex items-center gap-2"
+              >
+                <Target size={16} />
+                Start New Session
+              </button>
+              <button
+                onClick={() => setShowSessionSettings(true)}
+                className="btn-secondary flex items-center gap-2"
+              >
+                <Settings size={16} />
+                Change Session Length
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Main Practice Card */}
-      {currentWord && (
+      {currentWord && !sessionComplete && (
         <div className="card p-8">
           <div className="text-center mb-8">
             <div className="inline-flex items-center px-3 py-1 rounded-full text-sm font-medium bg-purple-100 text-purple-800 mb-4">
-              🎯 Gender Practice
+              🎯 Gender Practice • {sessionCounter + 1}/{sessionLength}
             </div>
             <div className="text-4xl font-bold text-gray-900 mb-2">
               ___ {currentWord.word}
@@ -345,7 +534,7 @@ const GenderHelper: React.FC = () => {
                   className="btn-secondary flex items-center gap-2"
                 >
                   <RotateCcw size={16} />
-                  Skip to Next
+                  {sessionCounter + 1 >= sessionLength ? 'Complete Session' : 'Next Word'}
                 </button>
                 
                 <button

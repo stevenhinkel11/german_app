@@ -9,26 +9,86 @@ const GenderHelper: React.FC = () => {
   const [score, setScore] = useState({ correct: 0, total: 0 });
   const [usedWords, setUsedWords] = useState<Set<string>>(new Set());
   const [showAddSuccess, setShowAddSuccess] = useState(false);
+  const [progress, setProgress] = useState<Map<string, any>>(new Map());
+  const [randomizedPool, setRandomizedPool] = useState<GermanNoun[]>([]);
 
   useEffect(() => {
+    // Load progress from localStorage
+    const savedProgress = localStorage.getItem('flashcard-progress');
+    if (savedProgress) {
+      const progressData = JSON.parse(savedProgress);
+      const progressMap = new Map();
+      Object.entries(progressData).forEach(([key, value]) => {
+        progressMap.set(key, {
+          ...value as any,
+          lastSeen: new Date((value as any).lastSeen)
+        });
+      });
+      setProgress(progressMap);
+    }
+
+    // Create a heavily randomized pool
+    createRandomizedPool();
     getNextWord();
   }, []);
 
-  const getNextWord = () => {
-    // Always shuffle the word list to ensure fresh randomization
-    const shuffledWords = [...germanNouns].sort(() => Math.random() - 0.5);
-    const availableWords = shuffledWords.filter(word => !usedWords.has(word.id));
+  const createRandomizedPool = () => {
+    // Create multiple shuffled copies for better randomization
+    let pool: GermanNoun[] = [];
     
-    if (availableWords.length === 0) {
-      // Reset if all words have been used and shuffle again
-      setUsedWords(new Set());
-      const newShuffle = [...germanNouns].sort(() => Math.random() - 0.5);
-      setCurrentWord(newShuffle[0]);
-    } else {
-      const randomWord = availableWords[Math.floor(Math.random() * availableWords.length)];
-      setCurrentWord(randomWord);
+    // Add words multiple times based on difficulty (easier words appear less often)
+    germanNouns.forEach(word => {
+      const frequency = word.difficulty === 1 ? 1 : word.difficulty === 2 ? 2 : 3;
+      for (let i = 0; i < frequency; i++) {
+        pool.push(word);
+      }
+    });
+    
+    // Apply Fisher-Yates shuffle multiple times for maximum randomness
+    for (let shuffleCount = 0; shuffleCount < 3; shuffleCount++) {
+      for (let i = pool.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [pool[i], pool[j]] = [pool[j], pool[i]];
+      }
     }
     
+    setRandomizedPool(pool);
+  };
+
+  const getNextWord = () => {
+    if (randomizedPool.length === 0) {
+      createRandomizedPool();
+      return;
+    }
+
+    // Use different strategies for word selection to maximize randomness
+    let availableWords: GermanNoun[];
+    
+    // If we've used less than 30% of words, pick from entire randomized pool
+    if (usedWords.size < germanNouns.length * 0.3) {
+      availableWords = randomizedPool.filter(word => !usedWords.has(word.id));
+    } else {
+      // Reset used words periodically for better variety
+      setUsedWords(new Set());
+      availableWords = randomizedPool;
+    }
+    
+    if (availableWords.length === 0) {
+      // Fallback: create new randomized pool
+      createRandomizedPool();
+      setUsedWords(new Set());
+      availableWords = randomizedPool;
+    }
+    
+    // Advanced randomization: use timestamp + multiple random factors
+    const timeBasedSeed = Date.now() % availableWords.length;
+    const randomFactor = Math.floor(Math.random() * availableWords.length);
+    const mathRandomFactor = Math.floor(Math.random() * availableWords.length);
+    
+    const combinedIndex = (timeBasedSeed + randomFactor + mathRandomFactor) % availableWords.length;
+    const selectedWord = availableWords[combinedIndex];
+    
+    setCurrentWord(selectedWord);
     setSelectedGender(null);
     setShowResult(false);
   };
@@ -46,6 +106,32 @@ const GenderHelper: React.FC = () => {
       
       setUsedWords(prev => new Set(prev).add(currentWord.id));
     }
+  };
+
+  const markProgress = (status: 'got-it' | 'not-quite' | 'repeat') => {
+    if (!currentWord) return;
+
+    const newProgress = {
+      cardId: currentWord.id,
+      lastSeen: new Date(),
+      status,
+      streak: status === 'got-it' ? (progress.get(currentWord.id)?.streak || 0) + 1 : 0
+    };
+
+    const newProgressMap = new Map(progress);
+    newProgressMap.set(currentWord.id, newProgress);
+    setProgress(newProgressMap);
+
+    // Save to localStorage (same system as flashcards)
+    const progressObj = Object.fromEntries(newProgressMap);
+    localStorage.setItem('flashcard-progress', JSON.stringify(progressObj));
+
+    console.log(`Marked "${currentWord.word}" as: ${status}`);
+    
+    // Move to next word after a brief delay
+    setTimeout(() => {
+      getNextWord();
+    }, 500);
   };
 
   const addToFlashcards = () => {
@@ -107,8 +193,17 @@ const GenderHelper: React.FC = () => {
             <div>
               <h3 className="font-semibold text-purple-800">Gender Practice Database</h3>
               <p className="text-sm text-purple-600">
-                {germanNouns.length} most common German nouns • Click "Add to Flashcards" to save words you want to study
+                {germanNouns.length} most common German nouns • Advanced randomization • Progress tracking
               </p>
+              <button
+                onClick={() => {
+                  createRandomizedPool();
+                  getNextWord();
+                }}
+                className="text-xs text-purple-600 hover:text-purple-800 underline mt-1"
+              >
+                🔄 Refresh word pool for maximum variety
+              </button>
             </div>
           </div>
           <div className="text-right">
@@ -149,8 +244,20 @@ const GenderHelper: React.FC = () => {
             <div className="text-lg text-gray-600 mb-2">
               {currentWord.english}
             </div>
-            <div className="text-sm text-gray-500">
-              Category: {currentWord.category} • Difficulty: {'⭐'.repeat(currentWord.difficulty)}
+            <div className="text-sm text-gray-500 flex items-center justify-center gap-4">
+              <span>Category: {currentWord.category}</span>
+              <span>Difficulty: {'⭐'.repeat(currentWord.difficulty)}</span>
+              {progress.get(currentWord.id) && (
+                <span className={`px-2 py-1 rounded-full text-xs font-medium ${
+                  progress.get(currentWord.id).status === 'got-it' ? 'bg-green-100 text-green-700' :
+                  progress.get(currentWord.id).status === 'not-quite' ? 'bg-yellow-100 text-yellow-700' :
+                  'bg-red-100 text-red-700'
+                }`}>
+                  {progress.get(currentWord.id).status === 'got-it' ? '✓ Know it' :
+                   progress.get(currentWord.id).status === 'not-quite' ? '~ Learning' :
+                   '⚠ Need practice'}
+                </span>
+              )}
             </div>
           </div>
 
@@ -201,13 +308,44 @@ const GenderHelper: React.FC = () => {
                 Plural: <span className="font-medium">{currentWord.plural}</span>
               </div>
               
+              {/* Progress Tracking Buttons */}
+              <div className="mb-6">
+                <div className="text-sm font-medium text-gray-700 mb-3 text-center">
+                  How well do you know this word?
+                </div>
+                <div className="flex justify-center gap-3 mb-4">
+                  <button
+                    onClick={() => markProgress('got-it')}
+                    className="btn-success flex items-center gap-2"
+                  >
+                    <Check size={16} />
+                    Got it!
+                  </button>
+                  <button
+                    onClick={() => markProgress('not-quite')}
+                    className="btn-warning flex items-center gap-2"
+                  >
+                    <RotateCcw size={16} />
+                    Not quite
+                  </button>
+                  <button
+                    onClick={() => markProgress('repeat')}
+                    className="btn-danger flex items-center gap-2"
+                  >
+                    <X size={16} />
+                    Repeat
+                  </button>
+                </div>
+              </div>
+              
+              {/* Action Buttons */}
               <div className="flex justify-center gap-3 mb-4">
                 <button
                   onClick={getNextWord}
-                  className="btn-primary flex items-center gap-2"
+                  className="btn-secondary flex items-center gap-2"
                 >
                   <RotateCcw size={16} />
-                  Next Word
+                  Skip to Next
                 </button>
                 
                 <button

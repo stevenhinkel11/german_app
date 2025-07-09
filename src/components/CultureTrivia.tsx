@@ -1,116 +1,14 @@
 import React, { useState, useEffect } from 'react';
-import { Globe, RefreshCw, ExternalLink, Heart } from 'lucide-react';
-
-interface TriviaFact {
-  id: string;
-  title: string;
-  fact: string;
-  country: 'Germany' | 'Austria' | 'Switzerland';
-  category: 'culture' | 'history' | 'food' | 'language' | 'geography' | 'traditions';
-  difficulty: number;
-  funRating: number;
-  source?: string;
-}
+import { Globe, RefreshCw, ExternalLink, Heart, Calendar, TrendingUp, BookOpen } from 'lucide-react';
+import { triviaDatabase, type TriviaFact } from '../data/cultureTrivia';
 
 const CultureTrivia: React.FC = () => {
   const [currentFact, setCurrentFact] = useState<TriviaFact | null>(null);
   const [factHistory, setFactHistory] = useState<TriviaFact[]>([]);
   const [favorites, setFavorites] = useState<Set<string>>(new Set());
   const [selectedCountry, setSelectedCountry] = useState<'all' | 'Germany' | 'Austria' | 'Switzerland'>('all');
-
-  const triviaFacts: TriviaFact[] = [
-    {
-      id: '1',
-      title: 'German Christmas Markets',
-      fact: 'Germany has over 2,500 Christmas markets (Weihnachtsmärkte) that operate during the holiday season. The oldest one in Dresden dates back to 1434! These markets are famous for Glühwein (mulled wine), Lebkuchen (gingerbread), and handcrafted ornaments.',
-      country: 'Germany',
-      category: 'traditions',
-      difficulty: 2,
-      funRating: 5,
-      source: 'German National Tourist Board'
-    },
-    {
-      id: '2',
-      title: 'Swiss Cheese Holes',
-      fact: 'The holes in Swiss cheese (called "eyes") are created by bacteria that produce carbon dioxide gas during the aging process. Traditional Swiss cheesemakers can tell the quality of cheese by the sound it makes when tapped!',
-      country: 'Switzerland',
-      category: 'food',
-      difficulty: 2,
-      funRating: 4
-    },
-    {
-      id: '3',
-      title: 'Austrian Sound of Music',
-      fact: 'While "The Sound of Music" is beloved worldwide, it\'s actually not that popular in Austria! Most Austrians haven\'t seen it, and some find the portrayal of their country to be too stereotypical. The real von Trapp family story is quite different from the musical.',
-      country: 'Austria',
-      category: 'culture',
-      difficulty: 3,
-      funRating: 4
-    },
-    {
-      id: '4',
-      title: 'German Bread Diversity',
-      fact: 'Germany has over 3,000 different types of bread! German bread culture is so significant that it was added to UNESCO\'s list of Intangible Cultural Heritage in 2014. Germans eat an average of 85kg of bread per person per year.',
-      country: 'Germany',
-      category: 'food',
-      difficulty: 2,
-      funRating: 4
-    },
-    {
-      id: '5',
-      title: 'Swiss Punctuality',
-      fact: 'Swiss trains are so punctual that they have an average delay of just 3 minutes. If a train is more than 3 minutes late, passengers can get a partial refund. The Swiss railway system is considered one of the most efficient in the world!',
-      country: 'Switzerland',
-      category: 'culture',
-      difficulty: 2,
-      funRating: 4
-    },
-    {
-      id: '6',
-      title: 'German Recycling',
-      fact: 'Germany recycles about 68% of its waste, making it one of the world\'s top recycling countries. The German recycling system is so complex that there are specific days for different types of waste, and mixing them up can result in fines!',
-      country: 'Germany',
-      category: 'culture',
-      difficulty: 2,
-      funRating: 3
-    },
-    {
-      id: '7',
-      title: 'Austrian Coffeehouse Culture',
-      fact: 'Viennese coffeehouse culture is a UNESCO Intangible Cultural Heritage. A traditional Austrian coffeehouse serves over 30 different types of coffee preparations, and it\'s considered rude to rush customers - people often spend hours reading newspapers and socializing.',
-      country: 'Austria',
-      category: 'culture',
-      difficulty: 3,
-      funRating: 4
-    },
-    {
-      id: '8',
-      title: 'German Autobahn',
-      fact: 'About 70% of Germany\'s autobahn network has no speed limit! However, there\'s a recommended speed of 130 km/h (81 mph). The autobahn system was started in the 1930s and now spans over 13,000 kilometers.',
-      country: 'Germany',
-      category: 'geography',
-      difficulty: 2,
-      funRating: 5
-    },
-    {
-      id: '9',
-      title: 'Swiss Direct Democracy',
-      fact: 'Switzerland practices direct democracy where citizens vote on specific issues 3-4 times per year. Swiss people have voted on everything from minimum wage to whether to build new infrastructure. It\'s one of the most democratic countries in the world!',
-      country: 'Switzerland',
-      category: 'culture',
-      difficulty: 4,
-      funRating: 4
-    },
-    {
-      id: '10',
-      title: 'German Kindergarten',
-      fact: 'The concept of "Kindergarten" (children\'s garden) was invented in Germany by Friedrich Fröbel in 1840. The idea was to let children learn through play and creativity, which was revolutionary at the time. Now kindergartens exist worldwide!',
-      country: 'Germany',
-      category: 'history',
-      difficulty: 3,
-      funRating: 4
-    }
-  ];
+  const [selectedCategory, setSelectedCategory] = useState<'all' | 'culture' | 'history' | 'food' | 'language' | 'geography' | 'traditions' | 'quirky' | 'modern'>('all');
+  const [stats, setStats] = useState({ factsViewed: 0, favorites: 0 });
 
   useEffect(() => {
     // Load favorites from localStorage
@@ -119,24 +17,51 @@ const CultureTrivia: React.FC = () => {
       setFavorites(new Set(JSON.parse(savedFavorites)));
     }
     
+    // Load stats
+    const savedStats = localStorage.getItem('trivia-stats');
+    if (savedStats) {
+      setStats(JSON.parse(savedStats));
+    }
+    
     // Load daily fact
     getRandomFact();
   }, []);
 
   const getRandomFact = () => {
-    const filteredFacts = selectedCountry === 'all' 
-      ? triviaFacts 
-      : triviaFacts.filter(fact => fact.country === selectedCountry);
+    let filteredFacts = triviaDatabase;
     
-    // Shuffle the filtered facts to ensure fresh randomization
-    const shuffledFacts = [...filteredFacts].sort(() => Math.random() - 0.5);
-    const unusedFacts = shuffledFacts.filter(fact => !factHistory.some(used => used.id === fact.id));
-    const factsToChooseFrom = unusedFacts.length > 0 ? unusedFacts : shuffledFacts;
+    // Filter by country
+    if (selectedCountry !== 'all') {
+      filteredFacts = filteredFacts.filter(fact => fact.country === selectedCountry);
+    }
     
-    const randomFact = factsToChooseFrom[Math.floor(Math.random() * factsToChooseFrom.length)];
+    // Filter by category
+    if (selectedCategory !== 'all') {
+      filteredFacts = filteredFacts.filter(fact => fact.category === selectedCategory);
+    }
+    
+    // Advanced randomization to avoid repetition
+    const recentFactIds = factHistory.slice(-10).map(f => f.id);
+    const unusedFacts = filteredFacts.filter(fact => !recentFactIds.includes(fact.id));
+    const factsToChooseFrom = unusedFacts.length > 0 ? unusedFacts : filteredFacts;
+    
+    // Weight selection by fun rating and difficulty
+    const weightedFacts = factsToChooseFrom.flatMap(fact => {
+      const weight = Math.max(1, fact.funRating - 1); // Higher fun rating = more weight
+      return Array(weight).fill(fact);
+    });
+    
+    const randomFact = weightedFacts[Math.floor(Math.random() * weightedFacts.length)];
     setCurrentFact(randomFact);
     
-    setFactHistory(prev => [...prev, randomFact].slice(-10)); // Keep last 10 facts
+    // Update history and stats
+    setFactHistory(prev => [...prev, randomFact].slice(-20)); // Keep last 20 facts
+    const newStats = {
+      factsViewed: stats.factsViewed + 1,
+      favorites: favorites.size
+    };
+    setStats(newStats);
+    localStorage.setItem('trivia-stats', JSON.stringify(newStats));
   };
 
   const toggleFavorite = (factId: string) => {
@@ -148,6 +73,14 @@ const CultureTrivia: React.FC = () => {
     }
     setFavorites(newFavorites);
     localStorage.setItem('trivia-favorites', JSON.stringify(Array.from(newFavorites)));
+    
+    // Update stats
+    const newStats = {
+      ...stats,
+      favorites: newFavorites.size
+    };
+    setStats(newStats);
+    localStorage.setItem('trivia-stats', JSON.stringify(newStats));
   };
 
   const getFlagEmoji = (country: string) => {
@@ -167,8 +100,28 @@ const CultureTrivia: React.FC = () => {
       case 'language': return '🗣️';
       case 'geography': return '🗺️';
       case 'traditions': return '🎄';
+      case 'quirky': return '🤪';
+      case 'modern': return '🔬';
       default: return '📖';
     }
+  };
+
+  const getCategoryStats = () => {
+    const stats = triviaDatabase.reduce((acc, fact) => {
+      acc[fact.category] = (acc[fact.category] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    
+    return Object.entries(stats).sort((a, b) => b[1] - a[1]);
+  };
+
+  const getCountryStats = () => {
+    const stats = triviaDatabase.reduce((acc, fact) => {
+      acc[fact.country] = (acc[fact.country] || 0) + 1;
+      return acc;
+    }, {} as Record<string, number>);
+    
+    return Object.entries(stats).sort((a, b) => b[1] - a[1]);
   };
 
   if (!currentFact) {
@@ -184,14 +137,55 @@ const CultureTrivia: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Controls */}
-      <div className="card p-4">
-        <div className="flex flex-wrap justify-between items-center gap-4">
-          <div className="flex items-center gap-2">
-            <Globe size={20} className="text-blue-600" />
-            <span className="font-medium">Culture Trivia</span>
+      {/* Header with Stats */}
+      <div className="card p-6">
+        <div className="flex justify-between items-start mb-4">
+          <div>
+            <h2 className="text-2xl font-bold text-gray-900 mb-2">🌍 Culture Trivia</h2>
+            <p className="text-gray-600">Discover fascinating facts about German-speaking cultures</p>
           </div>
+          <div className="text-right">
+            <div className="text-2xl font-bold text-blue-600">{triviaDatabase.length}</div>
+            <div className="text-sm text-gray-500">facts available</div>
+          </div>
+        </div>
+
+        {/* Stats Dashboard */}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+          <div className="bg-blue-50 p-4 rounded-lg">
+            <div className="flex items-center gap-2 mb-2">
+              <TrendingUp className="text-blue-600" size={20} />
+              <span className="font-semibold text-blue-800">Progress</span>
+            </div>
+            <div className="text-2xl font-bold text-blue-600">{stats.factsViewed}</div>
+            <div className="text-sm text-blue-600">facts viewed</div>
+          </div>
+          
+          <div className="bg-red-50 p-4 rounded-lg">
+            <div className="flex items-center gap-2 mb-2">
+              <Heart className="text-red-600" size={20} />
+              <span className="font-semibold text-red-800">Favorites</span>
+            </div>
+            <div className="text-2xl font-bold text-red-600">{favorites.size}</div>
+            <div className="text-sm text-red-600">saved facts</div>
+          </div>
+          
+          <div className="bg-green-50 p-4 rounded-lg">
+            <div className="flex items-center gap-2 mb-2">
+              <BookOpen className="text-green-600" size={20} />
+              <span className="font-semibold text-green-800">Completion</span>
+            </div>
+            <div className="text-2xl font-bold text-green-600">
+              {Math.min(100, Math.round((stats.factsViewed / triviaDatabase.length) * 100))}%
+            </div>
+            <div className="text-sm text-green-600">discovered</div>
+          </div>
+        </div>
+
+        {/* Filters */}
+        <div className="flex flex-wrap gap-4 mb-4">
           <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-gray-700">Country:</label>
             <select
               value={selectedCountry}
               onChange={(e) => setSelectedCountry(e.target.value as any)}
@@ -202,115 +196,158 @@ const CultureTrivia: React.FC = () => {
               <option value="Austria">🇦🇹 Austria</option>
               <option value="Switzerland">🇨🇭 Switzerland</option>
             </select>
-            <button
-              onClick={getRandomFact}
-              className="btn-primary text-sm flex items-center gap-1"
-            >
-              <RefreshCw size={14} />
-              New Fact
-            </button>
           </div>
+          
+          <div className="flex items-center gap-2">
+            <label className="text-sm font-medium text-gray-700">Category:</label>
+            <select
+              value={selectedCategory}
+              onChange={(e) => setSelectedCategory(e.target.value as any)}
+              className="px-3 py-1 border border-gray-300 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-blue-500"
+            >
+              <option value="all">All Categories</option>
+              <option value="culture">🎭 Culture</option>
+              <option value="history">📚 History</option>
+              <option value="food">🍞 Food</option>
+              <option value="language">🗣️ Language</option>
+              <option value="geography">🗺️ Geography</option>
+              <option value="traditions">🎄 Traditions</option>
+              <option value="quirky">🤪 Quirky</option>
+              <option value="modern">🔬 Modern</option>
+            </select>
+          </div>
+          
+          <button
+            onClick={getRandomFact}
+            className="flex items-center gap-2 px-4 py-2 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors"
+          >
+            <RefreshCw size={16} />
+            New Fact
+          </button>
         </div>
       </div>
 
       {/* Main Fact Card */}
-      <div className="card p-8">
+      <div className="card p-6">
         <div className="flex justify-between items-start mb-4">
-          <div className="flex items-center gap-2">
+          <div className="flex items-center gap-3">
             <span className="text-2xl">{getFlagEmoji(currentFact.country)}</span>
-            <span className="text-lg font-semibold text-gray-800">{currentFact.country}</span>
+            <div>
+              <h3 className="text-xl font-bold text-gray-900">{currentFact.title}</h3>
+              <div className="flex items-center gap-2 mt-1">
+                <span className="flex items-center gap-1 px-2 py-1 bg-blue-100 text-blue-800 rounded-full text-xs">
+                  {getCategoryEmoji(currentFact.category)}
+                  {currentFact.category}
+                </span>
+                <span className="px-2 py-1 bg-gray-100 text-gray-800 rounded-full text-xs">
+                  {currentFact.country}
+                </span>
+                {currentFact.year && (
+                  <span className="flex items-center gap-1 px-2 py-1 bg-green-100 text-green-800 rounded-full text-xs">
+                    <Calendar size={10} />
+                    {currentFact.year}
+                  </span>
+                )}
+              </div>
+            </div>
           </div>
           <button
             onClick={() => toggleFavorite(currentFact.id)}
-            className={`p-2 rounded-full transition-colors ${
-              favorites.has(currentFact.id) 
-                ? 'text-red-500 hover:text-red-600' 
-                : 'text-gray-400 hover:text-red-500'
+            className={`p-2 rounded-lg transition-colors ${
+              favorites.has(currentFact.id)
+                ? 'bg-red-50 text-red-600 hover:bg-red-100'
+                : 'bg-gray-50 text-gray-600 hover:bg-gray-100'
             }`}
           >
             <Heart size={20} fill={favorites.has(currentFact.id) ? 'currentColor' : 'none'} />
           </button>
         </div>
 
-        <div className="mb-4">
-          <h2 className="text-2xl font-bold text-gray-900 mb-2">{currentFact.title}</h2>
-          <div className="flex items-center gap-4 text-sm text-gray-600 mb-4">
-            <span className="flex items-center gap-1">
-              {getCategoryEmoji(currentFact.category)}
-              {currentFact.category}
-            </span>
-            <span>Difficulty: {'⭐'.repeat(currentFact.difficulty)}</span>
-            <span>Fun Rating: {'🎉'.repeat(currentFact.funRating)}</span>
-          </div>
+        <div className="bg-gray-50 p-4 rounded-lg mb-4">
+          <p className="text-gray-800 leading-relaxed">{currentFact.fact}</p>
         </div>
 
-        <div className="prose max-w-none">
-          <p className="text-gray-700 leading-relaxed text-lg">{currentFact.fact}</p>
-        </div>
-
-        {currentFact.source && (
-          <div className="mt-6 pt-4 border-t border-gray-200">
-            <div className="flex items-center gap-2 text-sm text-gray-500">
-              <ExternalLink size={14} />
-              <span>Source: {currentFact.source}</span>
+        {/* Fact Metadata */}
+        <div className="flex items-center justify-between text-sm text-gray-600">
+          <div className="flex items-center gap-4">
+            <div className="flex items-center gap-1">
+              <span>Fun Rating:</span>
+              <div className="flex">
+                {[...Array(5)].map((_, i) => (
+                  <span key={i} className={i < currentFact.funRating ? 'text-yellow-400' : 'text-gray-300'}>
+                    ⭐
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="flex items-center gap-1">
+              <span>Difficulty:</span>
+              <div className="flex">
+                {[...Array(5)].map((_, i) => (
+                  <span key={i} className={i < currentFact.difficulty ? 'text-red-400' : 'text-gray-300'}>
+                    🔥
+                  </span>
+                ))}
+              </div>
             </div>
           </div>
-        )}
+          
+          {currentFact.source && (
+            <div className="flex items-center gap-1 text-blue-600">
+              <ExternalLink size={12} />
+              <span className="text-xs">Source: {currentFact.source}</span>
+            </div>
+          )}
+        </div>
       </div>
 
-      {/* Recent Facts */}
-      {factHistory.length > 1 && (
-        <div className="card p-6">
-          <h3 className="text-lg font-semibold mb-4">Recent Facts</h3>
+      {/* Database Statistics */}
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+        <div className="card p-4">
+          <h3 className="font-semibold text-gray-900 mb-3">📊 Facts by Category</h3>
           <div className="space-y-2">
-            {factHistory.slice(-5).reverse().map((fact) => (
-              <div
-                key={fact.id}
-                className={`flex items-center gap-3 p-3 rounded-lg cursor-pointer transition-colors ${
-                  fact.id === currentFact.id 
-                    ? 'bg-blue-50 border border-blue-200' 
-                    : 'bg-gray-50 hover:bg-gray-100'
-                }`}
-                onClick={() => setCurrentFact(fact)}
-              >
-                <span className="text-lg">{getFlagEmoji(fact.country)}</span>
-                <span className="text-sm">{getCategoryEmoji(fact.category)}</span>
-                <span className="text-sm font-medium text-gray-800 truncate">
-                  {fact.title}
+            {getCategoryStats().map(([category, count]) => (
+              <div key={category} className="flex items-center justify-between">
+                <span className="flex items-center gap-2 text-sm">
+                  {getCategoryEmoji(category)}
+                  {category}
                 </span>
-                {favorites.has(fact.id) && (
-                  <Heart size={14} className="text-red-500" fill="currentColor" />
-                )}
+                <span className="text-sm font-medium text-blue-600">{count}</span>
               </div>
             ))}
           </div>
         </div>
-      )}
+        
+        <div className="card p-4">
+          <h3 className="font-semibold text-gray-900 mb-3">🏳️ Facts by Country</h3>
+          <div className="space-y-2">
+            {getCountryStats().map(([country, count]) => (
+              <div key={country} className="flex items-center justify-between">
+                <span className="flex items-center gap-2 text-sm">
+                  {getFlagEmoji(country)}
+                  {country}
+                </span>
+                <span className="text-sm font-medium text-blue-600">{count}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
 
-      {/* Favorites */}
-      {favorites.size > 0 && (
-        <div className="card p-6">
-          <h3 className="text-lg font-semibold mb-4 flex items-center gap-2">
-            <Heart size={18} className="text-red-500" />
-            Favorite Facts ({favorites.size})
-          </h3>
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-            {Array.from(favorites).map(factId => {
-              const fact = triviaFacts.find(f => f.id === factId);
-              if (!fact) return null;
-              return (
-                <div
-                  key={fact.id}
-                  className="flex items-center gap-3 p-3 bg-gray-50 rounded-lg cursor-pointer hover:bg-gray-100 transition-colors"
-                  onClick={() => setCurrentFact(fact)}
-                >
-                  <span className="text-lg">{getFlagEmoji(fact.country)}</span>
-                  <span className="text-sm font-medium text-gray-800 truncate">
-                    {fact.title}
-                  </span>
-                </div>
-              );
-            })}
+      {/* Recent Facts */}
+      {factHistory.length > 1 && (
+        <div className="card p-4">
+          <h3 className="font-semibold text-gray-900 mb-3">📚 Recent Facts</h3>
+          <div className="space-y-2">
+            {factHistory.slice(-5).reverse().map((fact, index) => (
+              <div key={`${fact.id}-${index}`} className="flex items-center gap-2 text-sm">
+                <span>{getFlagEmoji(fact.country)}</span>
+                <span className="text-gray-700">{fact.title}</span>
+                <span className="text-gray-500">•</span>
+                <span className="text-gray-500">{fact.category}</span>
+                {favorites.has(fact.id) && <Heart size={12} className="text-red-500" fill="currentColor" />}
+              </div>
+            ))}
           </div>
         </div>
       )}

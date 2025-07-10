@@ -80,34 +80,69 @@ const FlashcardApp: React.FC = () => {
       console.log('Using saved daily set');
       setDailySet(JSON.parse(savedDaily));
     } else {
-      // Generate new daily set
-      console.log(`Creating new daily set with ${cardsPerDay} cards`);
-      const shuffled = [...cards].sort(() => Math.random() - 0.5);
-      let daily = shuffled.slice(0, cardsPerDay);
+      // Generate new daily set with spaced repetition
+      console.log(`Creating new daily set with ${cardsPerDay} cards using spaced repetition`);
       
-      // Add cards that were previously marked as "repeat" or "not-quite" to the daily set
       const savedProgress = localStorage.getItem('flashcard-progress');
-      if (savedProgress) {
-        const progressData = JSON.parse(savedProgress);
-        console.log('Progress data loaded:', progressData);
-        const repeatCards = cards.filter(card => 
-          progressData[card.id] && (progressData[card.id].status === 'repeat' || progressData[card.id].status === 'not-quite')
-        );
-        console.log(`Found ${repeatCards.length} repeat/not-quite cards in progress data`);
+      const progressData = savedProgress ? JSON.parse(savedProgress) : {};
+      const todayDate = new Date();
+      
+      // Helper function to calculate spaced repetition interval
+      const getSpacedRepetitionDays = (streak: number): number => {
+        // Progressive spacing: 3, 7, 14, 30 days based on streak
+        const intervals = [3, 7, 14, 30];
+        return intervals[Math.min(streak - 1, intervals.length - 1)] || 30;
+      };
+      
+      // Categorize cards based on their progress status
+      const availableCards: Flashcard[] = [];
+      const priorityCards: Flashcard[] = []; // repeat and not-quite cards
+      const excludedCards: Flashcard[] = []; // got-it cards still in rest period
+      
+      cards.forEach(card => {
+        const cardProgress = progressData[card.id];
         
-        if (repeatCards.length > 0) {
-          console.log(`Adding ${repeatCards.length} previously marked repeat/not-quite cards:`, repeatCards.map(c => c.german));
-                      // Add repeat/not-quite cards to the end of the daily set, avoiding duplicates
-          const dailyIds = new Set(daily.map(c => c.id));
-          const newRepeatCards = repeatCards.filter(card => !dailyIds.has(card.id));
-          console.log(`After filtering duplicates: ${newRepeatCards.length} cards to add`);
-          daily = [...daily, ...newRepeatCards];
+        if (!cardProgress) {
+          // New card - add to available pool
+          availableCards.push(card);
+        } else if (cardProgress.status === 'repeat' || cardProgress.status === 'not-quite') {
+          // Always prioritize these cards
+          priorityCards.push(card);
+          console.log(`📌 Priority card: ${card.german} (${cardProgress.status})`);
+        } else if (cardProgress.status === 'got-it') {
+          // Check if enough time has passed for spaced repetition
+          const lastSeenDate = new Date(cardProgress.lastSeen);
+          const daysDifference = Math.floor((todayDate.getTime() - lastSeenDate.getTime()) / (1000 * 60 * 60 * 24));
+          const requiredDays = getSpacedRepetitionDays(cardProgress.streak);
+          
+          if (daysDifference >= requiredDays) {
+            availableCards.push(card);
+            console.log(`✅ Ready for review: ${card.german} (${daysDifference}/${requiredDays} days, streak: ${cardProgress.streak})`);
+          } else {
+            excludedCards.push(card);
+            console.log(`😴 Still resting: ${card.german} (${daysDifference}/${requiredDays} days, streak: ${cardProgress.streak})`);
+          }
         }
+      });
+      
+      console.log(`📊 Card categorization:
+        - Priority cards (repeat/not-quite): ${priorityCards.length}
+        - Available cards (new + ready for review): ${availableCards.length}
+        - Excluded cards (still resting): ${excludedCards.length}`);
+      
+      // Build the daily set: priority cards first, then fill with available cards
+      let daily: Flashcard[] = [...priorityCards];
+      
+      if (daily.length < cardsPerDay && availableCards.length > 0) {
+        const shuffled = [...availableCards].sort(() => Math.random() - 0.5);
+        const neededCards = cardsPerDay - daily.length;
+        daily = [...daily, ...shuffled.slice(0, neededCards)];
       }
+      
+      console.log(`🎯 Final daily set: ${daily.length} cards (${priorityCards.length} priority + ${daily.length - priorityCards.length} new/review)`);
       
       setDailySet(daily);
       localStorage.setItem(`daily-set-${today}`, JSON.stringify(daily));
-      console.log('New daily set created:', daily.map(c => c.german).slice(0, 5));
     }
   };
 
@@ -354,8 +389,9 @@ const FlashcardApp: React.FC = () => {
             onClick={loadFromGoogleSheets}
             disabled={isLoading || !googleSheetUrl}
             className="btn-primary disabled:opacity-50"
+            title="Refresh from Google Sheets while preserving your learning progress"
           >
-            {isLoading ? 'Loading...' : 'Reload Your Deck'}
+            {isLoading ? 'Loading...' : '🔄 Reload Your Deck'}
           </button>
           <button
             onClick={() => setShowImportOptions(!showImportOptions)}
@@ -449,6 +485,47 @@ const FlashcardApp: React.FC = () => {
         )}
       </div>
 
+      {/* Spaced Repetition Statistics */}
+      {flashcards.length > 0 && (
+        <div className="card p-4 bg-gradient-to-r from-green-50 to-blue-50 border-green-200">
+          <h3 className="font-semibold text-gray-800 mb-3">📊 Learning Progress & Spaced Repetition</h3>
+          <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
+            <div className="bg-white rounded-lg p-3">
+              <div className="text-2xl font-bold text-green-600">
+                {Array.from(progress.values()).filter(p => p.status === 'got-it').length}
+              </div>
+              <div className="text-sm text-green-700">Mastered</div>
+              <div className="text-xs text-gray-500">Resting 3-30 days</div>
+            </div>
+            <div className="bg-white rounded-lg p-3">
+              <div className="text-2xl font-bold text-yellow-600">
+                {Array.from(progress.values()).filter(p => p.status === 'not-quite').length}
+              </div>
+              <div className="text-sm text-yellow-700">Learning</div>
+              <div className="text-xs text-gray-500">Will reappear</div>
+            </div>
+            <div className="bg-white rounded-lg p-3">
+              <div className="text-2xl font-bold text-red-600">
+                {Array.from(progress.values()).filter(p => p.status === 'repeat').length}
+              </div>
+              <div className="text-sm text-red-700">Need Practice</div>
+              <div className="text-xs text-gray-500">High priority</div>
+            </div>
+            <div className="bg-white rounded-lg p-3">
+              <div className="text-2xl font-bold text-blue-600">
+                {flashcards.length - progress.size}
+              </div>
+              <div className="text-sm text-blue-700">New Words</div>
+              <div className="text-xs text-gray-500">Ready to learn</div>
+            </div>
+          </div>
+          <div className="mt-3 text-sm text-gray-600 text-center">
+            💡 <strong>Smart Scheduling:</strong> Words you mark as "Got it!" will return after 3-30 days based on your streak. 
+            "Not quite" and "Repeat" words always come back quickly.
+          </div>
+        </div>
+      )}
+
       {/* Progress Bar */}
       <div className="card p-4">
         <div className="flex justify-between items-center mb-2">
@@ -533,6 +610,7 @@ const FlashcardApp: React.FC = () => {
                 <button
                   onClick={() => markCard('got-it')}
                   className="btn-success flex items-center gap-2"
+                  title="I know this well! (Will return in 3-30 days)"
                 >
                   <Check size={16} />
                   Got it!
@@ -540,6 +618,7 @@ const FlashcardApp: React.FC = () => {
                 <button
                   onClick={() => markCard('not-quite')}
                   className="btn-warning flex items-center gap-2"
+                  title="Still learning (Will appear in future sessions)"
                 >
                   <RotateCcw size={16} />
                   Not quite
@@ -547,6 +626,7 @@ const FlashcardApp: React.FC = () => {
                 <button
                   onClick={() => markCard('repeat')}
                   className="btn-danger flex items-center gap-2"
+                  title="Need more practice (Will appear again in this session)"
                 >
                   <X size={16} />
                   Repeat

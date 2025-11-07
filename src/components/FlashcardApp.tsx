@@ -402,7 +402,6 @@ const FlashcardApp: React.FC = () => {
           </button>
           <button
             onClick={() => {
-              console.log('New Daily Set button clicked');
               // Clear cached daily set and generate new one
               const today = new Date().toDateString();
               localStorage.removeItem(`daily-set-${today}`);
@@ -410,26 +409,9 @@ const FlashcardApp: React.FC = () => {
               setCurrentIndex(0);
               setShowAnswer(false);
               
-              // Show confirmation message - both notification and alert for visibility
-              console.log('Setting showNewSetConfirmation to true');
+              // Show confirmation message
               setShowNewSetConfirmation(true);
-              
-              // Also show a brief alert to ensure user sees the confirmation
-              // (Can be removed once notification is confirmed working)
-              const notification = document.createElement('div');
-              notification.textContent = '✅ New Daily Set Loaded!';
-              notification.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #16a34a; color: white; padding: 16px 24px; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); z-index: 10000; font-weight: bold; font-size: 16px; animation: slideInFromTop 0.3s ease-out;';
-              document.body.appendChild(notification);
               setTimeout(() => {
-                notification.style.opacity = '0';
-                notification.style.transition = 'opacity 0.3s';
-                setTimeout(() => {
-                  document.body.removeChild(notification);
-                }, 300);
-              }, 4000);
-              
-              setTimeout(() => {
-                console.log('Hiding confirmation message');
                 setShowNewSetConfirmation(false);
               }, 4000);
             }}

@@ -62,13 +62,13 @@ const CultureTrivia: React.FC = () => {
           
           const newFact: TriviaFact = {
             id: `wiki-${Date.now()}-${Math.random()}`,
+            title: data.title || `About ${country}`,
             fact: factText,
             country: country,
             category: category,
             funRating: 3,
             difficulty: 2,
-            source: 'Wikipedia',
-            sourceUrl: data.content_urls?.desktop?.page || ''
+            source: 'Wikipedia'
           };
           
           // Cache the fact

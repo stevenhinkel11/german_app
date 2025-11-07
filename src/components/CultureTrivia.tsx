@@ -9,8 +9,105 @@ const CultureTrivia: React.FC = () => {
   const [selectedCountry, setSelectedCountry] = useState<'all' | 'Germany' | 'Austria' | 'Switzerland'>('all');
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'culture' | 'history' | 'food' | 'language' | 'geography' | 'traditions' | 'quirky' | 'modern'>('all');
   const [stats, setStats] = useState({ factsViewed: 0, favorites: 0 });
+  const [wikipediaFacts, setWikipediaFacts] = useState<TriviaFact[]>([]);
+  const [isLoadingWikipedia, setIsLoadingWikipedia] = useState(false);
+  const [allFacts, setAllFacts] = useState<TriviaFact[]>(triviaDatabase);
 
+  // Fetch facts from Wikipedia
+  const fetchWikipediaFact = async (country: 'Germany' | 'Austria' | 'Switzerland' = 'Germany') => {
+    setIsLoadingWikipedia(true);
+    try {
+      // Wikipedia API: Get a random article related to the country
+      const searchTerms = {
+        'Germany': ['Germany', 'German culture', 'Berlin', 'Bavaria', 'German history'],
+        'Austria': ['Austria', 'Vienna', 'Austrian culture', 'Alps', 'Austrian history'],
+        'Switzerland': ['Switzerland', 'Swiss culture', 'Zurich', 'Alps', 'Swiss history']
+      };
+      
+      const randomTerm = searchTerms[country][Math.floor(Math.random() * searchTerms[country].length)];
+      
+      // First, search for articles
+      const searchUrl = `https://en.wikipedia.org/api/rest_v1/page/summary/${encodeURIComponent(randomTerm)}`;
+      const response = await fetch(searchUrl);
+      
+      if (!response.ok) {
+        throw new Error('Wikipedia API error');
+      }
+      
+      const data = await response.json();
+      
+      // Extract interesting information from the summary
+      if (data.extract && data.extract.length > 50) {
+        // Create a fact from the Wikipedia summary
+        const sentences = data.extract.split('. ').filter((s: string) => s.length > 30);
+        if (sentences.length > 0) {
+          // Take the first interesting sentence
+          let factText = sentences[0];
+          if (factText.length > 200) {
+            factText = factText.substring(0, 200) + '...';
+          }
+          
+          // Determine category based on content
+          let category: 'culture' | 'history' | 'food' | 'language' | 'geography' | 'traditions' | 'quirky' | 'modern' = 'culture';
+          const lowerText = factText.toLowerCase();
+          if (lowerText.includes('history') || lowerText.includes('war') || lowerText.includes('century')) {
+            category = 'history';
+          } else if (lowerText.includes('food') || lowerText.includes('cuisine') || lowerText.includes('dish')) {
+            category = 'food';
+          } else if (lowerText.includes('language') || lowerText.includes('dialect')) {
+            category = 'language';
+          } else if (lowerText.includes('mountain') || lowerText.includes('river') || lowerText.includes('city')) {
+            category = 'geography';
+          }
+          
+          const newFact: TriviaFact = {
+            id: `wiki-${Date.now()}-${Math.random()}`,
+            fact: factText,
+            country: country,
+            category: category,
+            funRating: 3,
+            difficulty: 2,
+            source: 'Wikipedia',
+            sourceUrl: data.content_urls?.desktop?.page || ''
+          };
+          
+          // Cache the fact
+          const cachedFacts = JSON.parse(localStorage.getItem('wikipedia-facts') || '[]');
+          cachedFacts.push(newFact);
+          // Keep only last 50 Wikipedia facts
+          const trimmedCache = cachedFacts.slice(-50);
+          localStorage.setItem('wikipedia-facts', JSON.stringify(trimmedCache));
+          
+          setWikipediaFacts(prev => [...prev, newFact].slice(-20)); // Keep last 20 in memory
+          setAllFacts(prev => {
+            // Avoid duplicates
+            if (!prev.find(f => f.id === newFact.id)) {
+              return [...prev, newFact];
+            }
+            return prev;
+          });
+          
+          return newFact;
+        }
+      }
+    } catch (error) {
+      console.error('Error fetching Wikipedia fact:', error);
+    } finally {
+      setIsLoadingWikipedia(false);
+    }
+    return null;
+  };
+
+  // Load cached Wikipedia facts on mount
   useEffect(() => {
+    const cachedFacts = JSON.parse(localStorage.getItem('wikipedia-facts') || '[]');
+    if (cachedFacts.length > 0) {
+      setWikipediaFacts(cachedFacts.slice(-20));
+      setAllFacts([...triviaDatabase, ...cachedFacts]);
+    } else {
+      setAllFacts(triviaDatabase);
+    }
+    
     // Load favorites from localStorage
     const savedFavorites = localStorage.getItem('trivia-favorites');
     if (savedFavorites) {
@@ -25,10 +122,19 @@ const CultureTrivia: React.FC = () => {
     
     // Load daily fact
     getRandomFact();
+    
+    // Fetch a new Wikipedia fact occasionally (not on every load to avoid rate limiting)
+    const shouldFetchWikipedia = Math.random() < 0.3; // 30% chance
+    if (shouldFetchWikipedia) {
+      const countries: ('Germany' | 'Austria' | 'Switzerland')[] = ['Germany', 'Austria', 'Switzerland'];
+      const randomCountry = countries[Math.floor(Math.random() * countries.length)];
+      fetchWikipediaFact(randomCountry);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const getRandomFact = () => {
-    let filteredFacts = triviaDatabase;
+  const getRandomFact = async () => {
+    let filteredFacts = allFacts;
     
     // Filter by country
     if (selectedCountry !== 'all') {
@@ -45,11 +151,38 @@ const CultureTrivia: React.FC = () => {
     const unusedFacts = filteredFacts.filter(fact => !recentFactIds.includes(fact.id));
     const factsToChooseFrom = unusedFacts.length > 0 ? unusedFacts : filteredFacts;
     
+    // If we have very few facts, try to fetch a new one from Wikipedia
+    if (factsToChooseFrom.length < 5 && !isLoadingWikipedia) {
+      const countries: ('Germany' | 'Austria' | 'Switzerland')[] = ['Germany', 'Austria', 'Switzerland'];
+      const countryToFetch = selectedCountry !== 'all' ? selectedCountry : countries[Math.floor(Math.random() * countries.length)];
+      await fetchWikipediaFact(countryToFetch);
+      // Re-filter after fetching
+      let updatedFacts = allFacts;
+      if (selectedCountry !== 'all') {
+        updatedFacts = updatedFacts.filter(fact => fact.country === selectedCountry);
+      }
+      if (selectedCategory !== 'all') {
+        updatedFacts = updatedFacts.filter(fact => fact.category === selectedCategory);
+      }
+      filteredFacts = updatedFacts;
+    }
+    
     // Weight selection by fun rating and difficulty
-    const weightedFacts = factsToChooseFrom.flatMap(fact => {
+    const weightedFacts = filteredFacts.flatMap(fact => {
       const weight = Math.max(1, fact.funRating - 1); // Higher fun rating = more weight
       return Array(weight).fill(fact);
     });
+    
+    if (weightedFacts.length === 0) {
+      // Fallback to any fact if filters are too restrictive
+      const fallbackFacts = allFacts.filter(fact => !recentFactIds.includes(fact.id));
+      if (fallbackFacts.length > 0) {
+        const randomFact = fallbackFacts[Math.floor(Math.random() * fallbackFacts.length)];
+        setCurrentFact(randomFact);
+        setFactHistory(prev => [...prev, randomFact].slice(-20));
+        return;
+      }
+    }
     
     const randomFact = weightedFacts[Math.floor(Math.random() * weightedFacts.length)];
     setCurrentFact(randomFact);
@@ -107,7 +240,7 @@ const CultureTrivia: React.FC = () => {
   };
 
   const getCategoryStats = () => {
-    const stats = triviaDatabase.reduce((acc, fact) => {
+    const stats = allFacts.reduce((acc, fact) => {
       acc[fact.category] = (acc[fact.category] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);
@@ -116,7 +249,7 @@ const CultureTrivia: React.FC = () => {
   };
 
   const getCountryStats = () => {
-    const stats = triviaDatabase.reduce((acc, fact) => {
+    const stats = allFacts.reduce((acc, fact) => {
       acc[fact.country] = (acc[fact.country] || 0) + 1;
       return acc;
     }, {} as Record<string, number>);

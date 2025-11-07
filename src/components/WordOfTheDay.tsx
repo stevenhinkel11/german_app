@@ -2,26 +2,124 @@ import React, { useState, useEffect } from 'react';
 import { BookOpen, Volume2, Eye, EyeOff, RefreshCw, Calendar } from 'lucide-react';
 import { enhancedWords, type EnhancedWord } from '../data/words';
 
+interface SimpleWord {
+  german: string;
+  english: string;
+  category?: string;
+  difficulty?: number;
+}
+
 const WordOfTheDay: React.FC = () => {
   const [todaysWord, setTodaysWord] = useState<EnhancedWord | null>(null);
   const [showWordDetails, setShowWordDetails] = useState(false);
   const [wordHistory, setWordHistory] = useState<EnhancedWord[]>([]);
+  const [availableWords, setAvailableWords] = useState<EnhancedWord[]>([]);
+  const [isLoading, setIsLoading] = useState(true);
 
-  // Load today's word
-  useEffect(() => {
-    const today = new Date().toISOString().split('T')[0];
-    const savedWord = localStorage.getItem(`word-of-day-${today}`);
+  // Convert simple word to EnhancedWord format
+  const convertToEnhancedWord = (word: SimpleWord, index: number): EnhancedWord => {
+    // Try to find in enhanced words first (for words that have full data)
+    const enhancedMatch = enhancedWords.find(w => 
+      w.german.toLowerCase() === word.german.toLowerCase() ||
+      w.english.toLowerCase() === word.english.toLowerCase()
+    );
     
-    let word: EnhancedWord;
-    if (savedWord) {
-      word = JSON.parse(savedWord);
-    } else {
-      // Select a random word for today
-      word = enhancedWords[Math.floor(Math.random() * enhancedWords.length)];
-      localStorage.setItem(`word-of-day-${today}`, JSON.stringify(word));
+    if (enhancedMatch) {
+      return enhancedMatch;
     }
     
-    setTodaysWord(word);
+    // Create a basic enhanced word from simple data
+    return {
+      id: `sheet-${index}`,
+      german: word.german,
+      english: word.english,
+      pronunciation: word.german, // Basic - could be improved
+      type: word.category || 'vocabulary',
+      difficulty: word.difficulty || 2,
+      examples: [
+        {
+          sentence: `Das ist ${word.german}.`,
+          translation: `This is ${word.english}.`,
+          context: 'Basic example'
+        }
+      ]
+    };
+  };
+
+  // Load words from Google Sheets
+  const loadWordsFromSheets = async () => {
+    const googleSheetUrl = localStorage.getItem('google-sheet-url') || 
+      'https://docs.google.com/spreadsheets/d/e/2PACX-1vRa3k9eFOlMbkJEE4SZqhFvaqtbAzR3-ecP8tBrvXJINQmr4XfWYkzZkBGvbMINOpjCi7JqU75NRNrA/pubhtml';
+    
+    if (!googleSheetUrl) {
+      // Fallback to static words
+      setAvailableWords(enhancedWords);
+      return;
+    }
+
+    try {
+      // Convert Google Sheets URL to CSV export URL
+      let csvUrl = googleSheetUrl;
+      
+      if (googleSheetUrl.includes('/edit#gid=')) {
+        csvUrl = googleSheetUrl.replace('/edit#gid=', '/export?format=csv&gid=');
+      } else if (googleSheetUrl.includes('/pubhtml')) {
+        const sheetIdMatch = googleSheetUrl.match(/\/spreadsheets\/d\/e\/([^\/]+)\//);
+        if (sheetIdMatch) {
+          csvUrl = `https://docs.google.com/spreadsheets/d/e/${sheetIdMatch[1]}/pub?output=csv`;
+        }
+      } else if (googleSheetUrl.includes('/spreadsheets/d/')) {
+        const sheetIdMatch = googleSheetUrl.match(/\/spreadsheets\/d\/([^\/]+)/);
+        if (sheetIdMatch) {
+          csvUrl = `https://docs.google.com/spreadsheets/d/${sheetIdMatch[1]}/export?format=csv`;
+        }
+      }
+      
+      const response = await fetch(csvUrl);
+      const text = await response.text();
+      const lines = text.split('\n').filter(line => line.trim().length > 0);
+      const words: SimpleWord[] = [];
+      
+      for (let i = 1; i < lines.length; i++) { // Skip header
+        const values = lines[i].split(',').map(val => val.replace(/^"|"$/g, '').trim());
+        
+        if (values.length >= 2 && values[0] && values[1]) {
+          const germanCol = values[0].match(/^\d+$/) ? 1 : 0;
+          const englishCol = germanCol + 1;
+          
+          if (values[germanCol] && values[englishCol]) {
+            words.push({
+              german: values[germanCol].trim(),
+              english: values[englishCol].trim(),
+              category: values[englishCol + 1]?.trim() || 'vocabulary',
+              difficulty: parseInt(values[englishCol + 2]) || 2
+            });
+          }
+        }
+      }
+      
+      // Convert to EnhancedWord format
+      const enhancedWordsList = words.map((word, idx) => convertToEnhancedWord(word, idx));
+      
+      // Combine with static enhanced words (avoid duplicates)
+      const combinedWords = [...enhancedWords];
+      enhancedWordsList.forEach(word => {
+        if (!combinedWords.find(w => w.german.toLowerCase() === word.german.toLowerCase())) {
+          combinedWords.push(word);
+        }
+      });
+      
+      setAvailableWords(combinedWords);
+    } catch (error) {
+      console.error('Error loading words from Google Sheets:', error);
+      // Fallback to static words
+      setAvailableWords(enhancedWords);
+    }
+  };
+
+  // Load words from sheets on mount
+  useEffect(() => {
+    loadWordsFromSheets();
     
     // Load word history
     const savedHistory = localStorage.getItem('word-history');
@@ -30,8 +128,43 @@ const WordOfTheDay: React.FC = () => {
     }
   }, []);
 
+  // Load today's word when availableWords changes
+  useEffect(() => {
+    if (availableWords.length === 0) return;
+    
+    const today = new Date().toISOString().split('T')[0];
+    const savedWord = localStorage.getItem(`word-of-day-${today}`);
+    
+    let word: EnhancedWord;
+    if (savedWord) {
+      try {
+        const parsed = JSON.parse(savedWord);
+        // Verify word still exists in available words
+        const found = availableWords.find(w => w.id === parsed.id || 
+          (w.german === parsed.german && w.english === parsed.english));
+        word = found || availableWords[Math.floor(Math.random() * availableWords.length)];
+      } catch {
+        word = availableWords[Math.floor(Math.random() * availableWords.length)];
+      }
+    } else {
+      // Select a random word for today
+      word = availableWords[Math.floor(Math.random() * availableWords.length)];
+      localStorage.setItem(`word-of-day-${today}`, JSON.stringify(word));
+    }
+    
+    setTodaysWord(word);
+    setIsLoading(false);
+  }, [availableWords]);
+
   const getNewWord = () => {
-    const newWord = enhancedWords[Math.floor(Math.random() * enhancedWords.length)];
+    if (availableWords.length === 0) {
+      // Fallback if words haven't loaded yet
+      const newWord = enhancedWords[Math.floor(Math.random() * enhancedWords.length)];
+      setTodaysWord(newWord);
+      return;
+    }
+    
+    const newWord = availableWords[Math.floor(Math.random() * availableWords.length)];
     setTodaysWord(newWord);
     
     // Update history
@@ -53,7 +186,7 @@ const WordOfTheDay: React.FC = () => {
     }
   };
 
-  if (!todaysWord) {
+  if (isLoading || !todaysWord) {
     return (
       <div className="card p-6">
         <div className="text-center">
@@ -75,7 +208,7 @@ const WordOfTheDay: React.FC = () => {
           </div>
           <div className="flex items-center gap-2">
             <div className="text-sm text-gray-500">
-              {enhancedWords.length} words available
+              {availableWords.length > 0 ? availableWords.length : enhancedWords.length} words available
             </div>
             <button
               onClick={getNewWord}

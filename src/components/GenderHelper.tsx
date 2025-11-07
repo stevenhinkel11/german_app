@@ -2,6 +2,12 @@ import React, { useState, useEffect } from 'react';
 import { HelpCircle, Check, X, RotateCcw, Plus, BookOpen, Target, Settings } from 'lucide-react';
 import { germanNouns, GermanNoun } from '../data/germanNouns';
 
+interface SimpleWord {
+  german: string;
+  english: string;
+  category?: string;
+}
+
 const GenderHelper: React.FC = () => {
   const [currentWord, setCurrentWord] = useState<GermanNoun | null>(null);
   const [selectedGender, setSelectedGender] = useState<'der' | 'die' | 'das' | null>(null);
@@ -11,6 +17,9 @@ const GenderHelper: React.FC = () => {
   const [showAddSuccess, setShowAddSuccess] = useState(false);
   const [progress, setProgress] = useState<Map<string, any>>(new Map());
   const [randomizedPool, setRandomizedPool] = useState<GermanNoun[]>([]);
+  const [allNouns, setAllNouns] = useState<GermanNoun[]>(germanNouns);
+  const [isLoadingWords, setIsLoadingWords] = useState(false);
+  const [loadingProgress, setLoadingProgress] = useState({ current: 0, total: 0 });
   
   // Session management
   const [sessionLength, setSessionLength] = useState(10);
@@ -18,7 +27,307 @@ const GenderHelper: React.FC = () => {
   const [sessionComplete, setSessionComplete] = useState(false);
   const [showSessionSettings, setShowSessionSettings] = useState(false);
 
+  // Look up word in Wiktionary API to determine if it's a noun and get gender
+  const lookupWordInDictionary = async (word: string): Promise<{ isNoun: boolean; gender: 'der' | 'die' | 'das' | null }> => {
+    const lowerWord = word.toLowerCase().trim();
+    
+    // Check cache first
+    const cacheKey = `dict-${lowerWord}`;
+    const cached = localStorage.getItem(cacheKey);
+    if (cached) {
+      return JSON.parse(cached);
+    }
+    
+    // Check learned genders first
+    const learnedGenders = JSON.parse(localStorage.getItem('learned-genders') || '{}');
+    if (learnedGenders[lowerWord]) {
+      const result = { isNoun: true, gender: learnedGenders[lowerWord] as 'der' | 'die' | 'das' };
+      localStorage.setItem(cacheKey, JSON.stringify(result));
+      return result;
+    }
+    
+    try {
+      // Try Wiktionary API (free, no key required)
+      // Format: https://en.wiktionary.org/api/rest_v1/page/definition/{word}
+      const wiktionaryUrl = `https://en.wiktionary.org/api/rest_v1/page/definition/${encodeURIComponent(word)}`;
+      const response = await fetch(wiktionaryUrl, {
+        headers: {
+          'Accept': 'application/json'
+        }
+      });
+      
+      if (response.ok) {
+        const data = await response.json();
+        
+        // Look for German definitions (language code: 'de')
+        if (data.de && Array.isArray(data.de)) {
+          for (const entry of data.de) {
+            // Check if it's a noun - Wiktionary structure varies, check multiple places
+            let isNoun = false;
+            let gender: 'der' | 'die' | 'das' | null = null;
+            
+            // Method 1: Check partOfSpeech field
+            if (entry.partOfSpeech) {
+              const pos = entry.partOfSpeech.toLowerCase();
+              isNoun = pos.includes('noun') || pos.includes('substantiv') || pos.includes('nomen');
+            }
+            
+            // Method 2: Check in definitions/meanings
+            if (!isNoun && entry.definitions) {
+              for (const def of entry.definitions) {
+                if (def.partOfSpeech?.toLowerCase().includes('noun') || 
+                    def.tags?.some((tag: string) => tag.toLowerCase().includes('noun'))) {
+                  isNoun = true;
+                  break;
+                }
+              }
+            }
+            
+            // Method 3: Check tags directly
+            if (!isNoun && entry.tags) {
+              isNoun = entry.tags.some((tag: string) => 
+                tag.toLowerCase().includes('noun') || 
+                tag.toLowerCase().includes('substantiv') ||
+                tag.toLowerCase().includes('nomen')
+              );
+            }
+            
+            // Method 4: Check if word appears with article in definitions
+            const fullText = JSON.stringify(entry).toLowerCase();
+            if (!isNoun) {
+              // Look for patterns like "der/die/das [word]" which indicates a noun
+              const articlePattern = /(der|die|das)\s+[a-zäöüß]+/i;
+              if (articlePattern.test(fullText)) {
+                isNoun = true;
+              }
+            }
+            
+            if (isNoun) {
+              // Extract gender - try multiple methods
+              
+              // Method 1: Check tags for gender
+              if (entry.tags) {
+                for (const tag of entry.tags) {
+                  const lowerTag = tag.toLowerCase();
+                  if (lowerTag === 'masculine' || lowerTag === 'm' || lowerTag.includes('masculine')) {
+                    gender = 'der';
+                    break;
+                  } else if (lowerTag === 'feminine' || lowerTag === 'f' || lowerTag.includes('feminine')) {
+                    gender = 'die';
+                    break;
+                  } else if (lowerTag === 'neuter' || lowerTag === 'n' || lowerTag.includes('neuter')) {
+                    gender = 'das';
+                    break;
+                  }
+                }
+              }
+              
+              // Method 2: Check forms array
+              if (!gender && entry.forms) {
+                for (const form of entry.forms) {
+                  if (form.form === 'der' || form.tags?.some((t: string) => t.toLowerCase().includes('masculine'))) {
+                    gender = 'der';
+                    break;
+                  } else if (form.form === 'die' || form.tags?.some((t: string) => t.toLowerCase().includes('feminine'))) {
+                    gender = 'die';
+                    break;
+                  } else if (form.form === 'das' || form.tags?.some((t: string) => t.toLowerCase().includes('neuter'))) {
+                    gender = 'das';
+                    break;
+                  }
+                }
+              }
+              
+              // Method 3: Search in full text for article patterns
+              if (!gender) {
+                const derMatch = fullText.match(/\bder\s+[a-zäöüß]+\b/i);
+                const dieMatch = fullText.match(/\bdie\s+[a-zäöüß]+\b/i);
+                const dasMatch = fullText.match(/\bdas\s+[a-zäöüß]+\b/i);
+                
+                // Prefer exact matches with the word
+                if (derMatch && derMatch[0].toLowerCase().includes(lowerWord)) gender = 'der';
+                else if (dieMatch && dieMatch[0].toLowerCase().includes(lowerWord)) gender = 'die';
+                else if (dasMatch && dasMatch[0].toLowerCase().includes(lowerWord)) gender = 'das';
+                // Fallback to any article found
+                else if (derMatch) gender = 'der';
+                else if (dieMatch) gender = 'die';
+                else if (dasMatch) gender = 'das';
+              }
+              
+              // Method 4: Check in definitions text
+              if (!gender && entry.definitions) {
+                for (const def of entry.definitions) {
+                  const defText = JSON.stringify(def).toLowerCase();
+                  if (defText.includes(`"der ${lowerWord}`) || defText.includes(`(der ${lowerWord}`)) {
+                    gender = 'der';
+                    break;
+                  } else if (defText.includes(`"die ${lowerWord}`) || defText.includes(`(die ${lowerWord}`)) {
+                    gender = 'die';
+                    break;
+                  } else if (defText.includes(`"das ${lowerWord}`) || defText.includes(`(das ${lowerWord}`)) {
+                    gender = 'das';
+                    break;
+                  }
+                }
+              }
+              
+              const result = { isNoun: true, gender };
+              localStorage.setItem(cacheKey, JSON.stringify(result));
+              return result;
+            }
+          }
+        }
+      }
+    } catch (error) {
+      console.error(`Error looking up word "${word}" in dictionary:`, error);
+    }
+    
+    // Fallback: Try alternative API (Dict.cc style lookup via a proxy or alternative service)
+    // For now, return unknown - we'll handle this in the calling function
+    const result = { isNoun: false, gender: null as 'der' | 'die' | 'das' | null };
+    localStorage.setItem(cacheKey, JSON.stringify(result));
+    return result;
+  };
+
+  // Load words from Google Sheets and convert to GermanNoun format
+  const loadWordsFromSheets = async () => {
+    const googleSheetUrl = localStorage.getItem('google-sheet-url') || 
+      'https://docs.google.com/spreadsheets/d/e/2PACX-1vRa3k9eFOlMbkJEE4SZqhFvaqtbAzR3-ecP8tBrvXJINQmr4XfWYkzZkBGvbMINOpjCi7JqU75NRNrA/pubhtml';
+    
+    if (!googleSheetUrl) {
+      setAllNouns(germanNouns);
+      return;
+    }
+
+    try {
+      // Convert Google Sheets URL to CSV export URL
+      let csvUrl = googleSheetUrl;
+      
+      if (googleSheetUrl.includes('/edit#gid=')) {
+        csvUrl = googleSheetUrl.replace('/edit#gid=', '/export?format=csv&gid=');
+      } else if (googleSheetUrl.includes('/pubhtml')) {
+        const sheetIdMatch = googleSheetUrl.match(/\/spreadsheets\/d\/e\/([^\/]+)\//);
+        if (sheetIdMatch) {
+          csvUrl = `https://docs.google.com/spreadsheets/d/e/${sheetIdMatch[1]}/pub?output=csv`;
+        }
+      } else if (googleSheetUrl.includes('/spreadsheets/d/')) {
+        const sheetIdMatch = googleSheetUrl.match(/\/spreadsheets\/d\/([^\/]+)/);
+        if (sheetIdMatch) {
+          csvUrl = `https://docs.google.com/spreadsheets/d/${sheetIdMatch[1]}/export?format=csv`;
+        }
+      }
+      
+      const response = await fetch(csvUrl);
+      const text = await response.text();
+      const lines = text.split('\n').filter(line => line.trim().length > 0);
+      const sheetNouns: GermanNoun[] = [];
+      const wordsToProcess: Array<{word: string; english: string; category: string; difficulty: number; index: number}> = [];
+      
+      // First pass: collect all potential words (case-insensitive, no space filter)
+      for (let i = 1; i < lines.length; i++) { // Skip header
+        const values = lines[i].split(',').map(val => val.replace(/^"|"$/g, '').trim());
+        
+        if (values.length >= 2 && values[0] && values[1]) {
+          const germanCol = values[0].match(/^\d+$/) ? 1 : 0;
+          const englishCol = germanCol + 1;
+          
+          if (values[germanCol] && values[englishCol]) {
+            const germanWord = values[germanCol].trim();
+            const englishWord = values[englishCol].trim();
+            
+            // Process all words, not just capitalized ones (user might not capitalize properly)
+            // Skip only if it has spaces (likely a phrase, not a single noun)
+            if (!germanWord.includes(' ') && germanWord.length > 1) {
+              wordsToProcess.push({
+                word: germanWord,
+                english: englishWord,
+                category: values[englishCol + 1]?.trim() || 'vocabulary',
+                difficulty: parseInt(values[englishCol + 2]) || 2,
+                index: i
+              });
+            }
+          }
+        }
+      }
+      
+      // Second pass: Look up each word in dictionary API (with rate limiting)
+      console.log(`Processing ${wordsToProcess.length} words from Google Sheets...`);
+      setIsLoadingWords(true);
+      setLoadingProgress({ current: 0, total: wordsToProcess.length });
+      
+      for (let i = 0; i < wordsToProcess.length; i++) {
+        const { word, english, category, difficulty, index } = wordsToProcess[i];
+        
+        setLoadingProgress({ current: i + 1, total: wordsToProcess.length });
+        
+        // Rate limiting: add small delay between API calls to avoid overwhelming the service
+        if (i > 0 && i % 5 === 0) {
+          await new Promise(resolve => setTimeout(resolve, 500)); // 500ms delay every 5 words
+        }
+        
+        // Look up word in dictionary
+        const lookupResult = await lookupWordInDictionary(word);
+        
+        // Only add if it's identified as a noun
+        if (lookupResult.isNoun) {
+          // Capitalize the word properly (German nouns should be capitalized)
+          const capitalizedWord = word.charAt(0).toUpperCase() + word.slice(1).toLowerCase();
+          
+          // Use detected gender, or fallback to 'die' if unknown
+          const gender = lookupResult.gender || 'die';
+          
+          // Generate plural (basic rules - could be improved with API data)
+          let plural = capitalizedWord + 'e'; // Default plural
+          const lowerWord = capitalizedWord.toLowerCase();
+          if (lowerWord.endsWith('e')) {
+            plural = capitalizedWord + 'n';
+          } else if (lowerWord.endsWith('er') || lowerWord.endsWith('el') || lowerWord.endsWith('en')) {
+            plural = capitalizedWord; // No change
+          } else if (lowerWord.endsWith('um')) {
+            plural = capitalizedWord.replace(/um$/i, 'en');
+          } else if (lowerWord.endsWith('chen') || lowerWord.endsWith('lein')) {
+            plural = capitalizedWord; // Diminutives don't change
+          }
+          
+          sheetNouns.push({
+            id: `sheet-${index}`,
+            word: capitalizedWord,
+            gender: gender,
+            plural: plural,
+            english: english,
+            category: category,
+            difficulty: difficulty
+          });
+          
+          console.log(`✓ Found noun: ${capitalizedWord} (${gender})`);
+        } else {
+          console.log(`✗ Skipped (not a noun): ${word}`);
+        }
+      }
+      
+      console.log(`Loaded ${sheetNouns.length} nouns from Google Sheets`);
+      
+      // Combine with static nouns (avoid duplicates)
+      const combinedNouns = [...germanNouns];
+      sheetNouns.forEach(noun => {
+        if (!combinedNouns.find(n => n.word.toLowerCase() === noun.word.toLowerCase())) {
+          combinedNouns.push(noun);
+        }
+      });
+      
+      setAllNouns(combinedNouns);
+      setIsLoadingWords(false);
+    } catch (error) {
+      console.error('Error loading words from Google Sheets:', error);
+      setAllNouns(germanNouns);
+      setIsLoadingWords(false);
+    }
+  };
+
   useEffect(() => {
+    // Load words from Google Sheets first
+    loadWordsFromSheets();
+    
     // Load progress from localStorage
     const savedProgress = localStorage.getItem('flashcard-progress');
     if (savedProgress) {
@@ -38,18 +347,24 @@ const GenderHelper: React.FC = () => {
     if (savedSessionLength) {
       setSessionLength(parseInt(savedSessionLength));
     }
-
-    // Create a heavily randomized pool
-    createRandomizedPool();
-    getNextWord();
   }, []);
+
+  // Create randomized pool when allNouns changes
+  useEffect(() => {
+    if (allNouns.length > 0) {
+      createRandomizedPool();
+      if (!currentWord) {
+        getNextWord();
+      }
+    }
+  }, [allNouns]);
 
   const createRandomizedPool = () => {
     // Create multiple shuffled copies for better randomization
     let pool: GermanNoun[] = [];
     
     // Add words multiple times based on difficulty (easier words appear less often)
-    germanNouns.forEach(word => {
+    allNouns.forEach(word => {
       const frequency = word.difficulty === 1 ? 1 : word.difficulty === 2 ? 2 : 3;
       for (let i = 0; i < frequency; i++) {
         pool.push(word);
@@ -103,7 +418,7 @@ const GenderHelper: React.FC = () => {
     
     // If we've used most words, reset the session
     if (availableWords.length === 0) {
-      if (usedWords.size < germanNouns.length * 0.3) {
+      if (usedWords.size < allNouns.length * 0.3) {
         // Fallback: create new randomized pool
         createRandomizedPool();
         setUsedWords(new Set());
@@ -134,6 +449,13 @@ const GenderHelper: React.FC = () => {
     
     if (currentWord) {
       const isCorrect = gender === currentWord.gender;
+      
+      // Save the correct gender to learned genders (especially if user got it wrong)
+      // This helps improve future automatic detection
+      const learnedGenders = JSON.parse(localStorage.getItem('learned-genders') || '{}');
+      learnedGenders[currentWord.word.toLowerCase()] = currentWord.gender;
+      localStorage.setItem('learned-genders', JSON.stringify(learnedGenders));
+      
       setScore(prev => ({
         correct: prev.correct + (isCorrect ? 1 : 0),
         total: prev.total + 1
@@ -255,6 +577,31 @@ const GenderHelper: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Loading Indicator */}
+      {isLoadingWords && (
+        <div className="card p-4 bg-blue-50 border-blue-200">
+          <div className="flex items-center gap-3">
+            <div className="animate-spin">
+              <RefreshCw size={20} className="text-blue-600" />
+            </div>
+            <div className="flex-1">
+              <p className="text-sm font-medium text-blue-800">
+                Processing words from Google Sheets...
+              </p>
+              <p className="text-xs text-blue-600">
+                Looking up {loadingProgress.current} of {loadingProgress.total} words in dictionary
+              </p>
+              <div className="mt-2 w-full bg-blue-200 rounded-full h-2">
+                <div 
+                  className="bg-blue-600 h-2 rounded-full transition-all duration-300"
+                  style={{ width: `${(loadingProgress.current / loadingProgress.total) * 100}%` }}
+                ></div>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+      
       {/* Header Info */}
       <div className="card p-4 bg-purple-50 border-purple-200">
         <div className="flex items-center justify-between">
@@ -265,7 +612,7 @@ const GenderHelper: React.FC = () => {
             <div>
               <h3 className="font-semibold text-purple-800">Gender Practice Database</h3>
               <p className="text-sm text-purple-600">
-                {germanNouns.length} most common German nouns • Smart word prioritization • Progress tracking
+                {allNouns.length} German nouns available • Smart word prioritization • Progress tracking
               </p>
               <button
                 onClick={() => {

@@ -28,6 +28,7 @@ const FlashcardApp: React.FC = () => {
   const [studyDirection, setStudyDirection] = useState<'german-to-english' | 'english-to-german'>('german-to-english');
   const [showImportOptions, setShowImportOptions] = useState(false);
   const [pasteText, setPasteText] = useState('');
+  const [showNewSetConfirmation, setShowNewSetConfirmation] = useState(false);
 
 
 
@@ -407,6 +408,12 @@ const FlashcardApp: React.FC = () => {
               generateDailySet(flashcards);
               setCurrentIndex(0);
               setShowAnswer(false);
+              
+              // Show confirmation message
+              setShowNewSetConfirmation(true);
+              setTimeout(() => {
+                setShowNewSetConfirmation(false);
+              }, 3000);
             }}
             className="btn-secondary"
           >
@@ -484,6 +491,14 @@ const FlashcardApp: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* New Daily Set Confirmation */}
+      {showNewSetConfirmation && (
+        <div className="fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-2 z-50 notification-enter">
+          <Check size={20} />
+          <span className="font-semibold">New daily set loaded! ✨</span>
+        </div>
+      )}
 
       {/* Spaced Repetition Statistics */}
       {flashcards.length > 0 && (

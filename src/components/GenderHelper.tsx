@@ -1,12 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { HelpCircle, Check, X, RotateCcw, Plus, BookOpen, Target, Settings } from 'lucide-react';
+import { HelpCircle, Check, X, RotateCcw, Plus, BookOpen, Target, Settings, RefreshCw } from 'lucide-react';
 import { germanNouns, GermanNoun } from '../data/germanNouns';
-
-interface SimpleWord {
-  german: string;
-  english: string;
-  category?: string;
-}
 
 const GenderHelper: React.FC = () => {
   const [currentWord, setCurrentWord] = useState<GermanNoun | null>(null);

@@ -9,7 +9,6 @@ const CultureTrivia: React.FC = () => {
   const [selectedCountry, setSelectedCountry] = useState<'all' | 'Germany' | 'Austria' | 'Switzerland'>('all');
   const [selectedCategory, setSelectedCategory] = useState<'all' | 'culture' | 'history' | 'food' | 'language' | 'geography' | 'traditions' | 'quirky' | 'modern'>('all');
   const [stats, setStats] = useState({ factsViewed: 0, favorites: 0 });
-  const [wikipediaFacts, setWikipediaFacts] = useState<TriviaFact[]>([]);
   const [isLoadingWikipedia, setIsLoadingWikipedia] = useState(false);
   const [allFacts, setAllFacts] = useState<TriviaFact[]>(triviaDatabase);
 
@@ -78,7 +77,6 @@ const CultureTrivia: React.FC = () => {
           const trimmedCache = cachedFacts.slice(-50);
           localStorage.setItem('wikipedia-facts', JSON.stringify(trimmedCache));
           
-          setWikipediaFacts(prev => [...prev, newFact].slice(-20)); // Keep last 20 in memory
           setAllFacts(prev => {
             // Avoid duplicates
             if (!prev.find(f => f.id === newFact.id)) {
@@ -102,7 +100,6 @@ const CultureTrivia: React.FC = () => {
   useEffect(() => {
     const cachedFacts = JSON.parse(localStorage.getItem('wikipedia-facts') || '[]');
     if (cachedFacts.length > 0) {
-      setWikipediaFacts(cachedFacts.slice(-20));
       setAllFacts([...triviaDatabase, ...cachedFacts]);
     } else {
       setAllFacts(triviaDatabase);

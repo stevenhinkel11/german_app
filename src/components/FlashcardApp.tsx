@@ -402,6 +402,7 @@ const FlashcardApp: React.FC = () => {
           </button>
           <button
             onClick={() => {
+              console.log('New Daily Set button clicked');
               // Clear cached daily set and generate new one
               const today = new Date().toDateString();
               localStorage.removeItem(`daily-set-${today}`);
@@ -409,11 +410,28 @@ const FlashcardApp: React.FC = () => {
               setCurrentIndex(0);
               setShowAnswer(false);
               
-              // Show confirmation message
+              // Show confirmation message - both notification and alert for visibility
+              console.log('Setting showNewSetConfirmation to true');
               setShowNewSetConfirmation(true);
+              
+              // Also show a brief alert to ensure user sees the confirmation
+              // (Can be removed once notification is confirmed working)
+              const notification = document.createElement('div');
+              notification.textContent = '✅ New Daily Set Loaded!';
+              notification.style.cssText = 'position: fixed; top: 20px; right: 20px; background: #16a34a; color: white; padding: 16px 24px; border-radius: 8px; box-shadow: 0 10px 25px rgba(0,0,0,0.3); z-index: 10000; font-weight: bold; font-size: 16px; animation: slideInFromTop 0.3s ease-out;';
+              document.body.appendChild(notification);
               setTimeout(() => {
+                notification.style.opacity = '0';
+                notification.style.transition = 'opacity 0.3s';
+                setTimeout(() => {
+                  document.body.removeChild(notification);
+                }, 300);
+              }, 4000);
+              
+              setTimeout(() => {
+                console.log('Hiding confirmation message');
                 setShowNewSetConfirmation(false);
-              }, 3000);
+              }, 4000);
             }}
             className="btn-secondary"
           >
@@ -494,9 +512,23 @@ const FlashcardApp: React.FC = () => {
 
       {/* New Daily Set Confirmation */}
       {showNewSetConfirmation && (
-        <div className="fixed top-4 right-4 bg-green-500 text-white px-6 py-3 rounded-lg shadow-lg flex items-center gap-2 z-50 notification-enter">
-          <Check size={20} />
-          <span className="font-semibold">New daily set loaded! ✨</span>
+        <div 
+          className="fixed top-4 right-4 bg-green-600 text-white px-6 py-4 rounded-lg shadow-2xl flex items-center gap-3 z-[9999] border-2 border-green-700"
+          style={{
+            minWidth: '300px',
+            boxShadow: '0 10px 25px rgba(0, 0, 0, 0.3)',
+            animation: 'slideInFromTop 0.3s ease-out',
+            opacity: 1,
+            transform: 'translateY(0)'
+          }}
+        >
+          <div className="bg-green-700 rounded-full p-2 flex-shrink-0">
+            <Check size={24} className="text-white" />
+          </div>
+          <div>
+            <div className="font-bold text-lg">✅ New Daily Set Loaded!</div>
+            <div className="text-sm text-green-100 mt-1">Your flashcards have been refreshed ✨</div>
+          </div>
         </div>
       )}
 
